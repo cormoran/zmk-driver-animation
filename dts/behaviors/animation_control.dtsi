@@ -6,7 +6,8 @@
 
 / {
     behaviors {
-        /omit-if-no-ref/ animctl: animctl {
+        // /omit-if-no-ref/ // TODO: omit if no ref. It fails by too many identifier length
+         animctl: animctl {
             compatible = "zmk,behavior-animation-control";
             #binding-cells = <2>;
             display-name = "Animation control";
