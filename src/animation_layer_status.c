@@ -64,7 +64,7 @@ static void refresh_layer_status_central(const struct device *dev) {
         LOG_DBG("Layer status changed: %d", data->layer_status);
         if (data->counter < config->extend_duration) {
             data->counter = config->extend_duration;
-            zmk_animation_request_frames_if_required(data->counter, true);
+            zmk_animation_request_frames_cap(data->counter);
         }
     }
 }
@@ -82,7 +82,7 @@ static void refresh_layer_status_peripheral(const struct device *dev,
         LOG_DBG("Layer status changed: %d", data->layer_status);
         if (data->counter < config->extend_duration) {
             data->counter = config->extend_duration;
-            zmk_animation_request_frames_if_required(data->counter, true);
+            zmk_animation_request_frames_cap(data->counter);
         }
     }
 }
@@ -136,7 +136,7 @@ static void animation_layer_status_render_frame(const struct device *dev,
         }
     }
     data->counter = counter - 1;
-    zmk_animation_request_frames_if_required(data->counter, false);
+    zmk_animation_request_frames_cap(data->counter);
     if (data->counter == 0) {
         animation_stop(dev);
     }
@@ -168,7 +168,7 @@ static void animation_layer_status_start(const struct device *dev,
                         ? ANIMATION_DURATION_FOREVER
                         : ANIMATION_DURATION_MS_TO_FRAMES(request_duration_ms);
     data->running = true;
-    zmk_animation_request_frames_if_required(data->counter, true);
+    zmk_animation_request_frames_cap(data->counter);
 }
 
 static void animation_layer_status_stop(const struct device *dev) {

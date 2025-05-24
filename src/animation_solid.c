@@ -76,7 +76,7 @@ static void animation_solid_render_frame(const struct device *dev,
 
     if (counter < ANIMATION_DURATION_FOREVER) {
         data->counter = counter - 1;
-        zmk_animation_request_frames_if_required(data->counter, false);
+        zmk_animation_request_frames_cap(data->counter);
     }
 
     animation_solid_update_color(dev);
@@ -94,7 +94,7 @@ static void animation_solid_start(const struct device *dev,
         // optimization to reduce render frame if animation is forever
         zmk_animation_request_frames(1);
     } else {
-        zmk_animation_request_frames_if_required(data->counter, true);
+        zmk_animation_request_frames_cap(data->counter);
     }
     LOG_INF("Start animation solid");
 }

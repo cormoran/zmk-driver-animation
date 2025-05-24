@@ -159,16 +159,10 @@ void zmk_animation_request_frames(uint32_t frames) {
     animation_timer_countdown = frames;
 }
 
-void zmk_animation_request_frames_if_required(uint32_t decrenetal_counter,
-                                              bool initial) {
-    if (initial) {
-        zmk_animation_request_frames(decrenetal_counter >
-                                             CONFIG_ZMK_ANIMATION_FPS
-                                         ? CONFIG_ZMK_ANIMATION_FPS
-                                         : decrenetal_counter);
-    } else if (decrenetal_counter % CONFIG_ZMK_ANIMATION_FPS == 0) {
-        zmk_animation_request_frames(CONFIG_ZMK_ANIMATION_FPS);
-    }
+void zmk_animation_request_frames_cap(uint32_t decrenetal_counter) {
+    zmk_animation_request_frames(decrenetal_counter > CONFIG_ZMK_ANIMATION_FPS
+                                     ? CONFIG_ZMK_ANIMATION_FPS
+                                     : decrenetal_counter);
 }
 
 static int zmk_animation_on_activity_state_changed(const zmk_event_t *event) {

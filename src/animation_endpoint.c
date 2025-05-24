@@ -99,11 +99,11 @@ void refresh_ble_connection_status(const struct device *dev) {
 #endif
     if (!is_connected && data->counter < config->not_connected_duration) {
         data->counter = config->not_connected_duration;
-        zmk_animation_request_frames_if_required(data->counter, true);
+        zmk_animation_request_frames_cap(data->counter);
     }
     if (data->counter < config->extend_duration) {
         data->counter = config->extend_duration;
-        zmk_animation_request_frames_if_required(data->counter, true);
+        zmk_animation_request_frames_cap(data->counter);
     }
 }
 
@@ -250,7 +250,7 @@ static void animation_endpoint_render_frame(const struct device *dev,
 #endif
     data->blink_counter++;
     data->counter = counter - 1;
-    zmk_animation_request_frames_if_required(data->counter, false);
+    zmk_animation_request_frames_cap(data->counter);
     if (data->counter == 0) {
         LOG_INF("Stop animation endpoint status by counter");
         animation_stop(dev);
@@ -272,7 +272,7 @@ static void animation_endpoint_start(const struct device *dev,
 
     refresh_ble_connection_status(dev);
 
-    zmk_animation_request_frames_if_required(data->counter, true);
+    zmk_animation_request_frames_cap(data->counter);
     LOG_INF("Start animation endpoint status");
 }
 

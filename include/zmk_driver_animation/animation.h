@@ -10,11 +10,10 @@ void zmk_animation_request_frames(uint32_t frames);
 
 /**
  * Request some frames depending on the given decremental counter value.
- * It internally requests small frames per pre-defined counter interval.
- * It's useful to avoid requesting too big frames if counter value is very large
- * and animation will be cancled in the middle.
- * @param initial whether this is the first call after animation starts or not.
- *                if true, frame is always requested.
+ * It internally requests small frames (e.g. at most 1sec) if the
+ * decremental_counter value is large. It's useful to avoid requesting too big
+ * frames if counter value is very large and animation will be cancelled in the
+ * middle. This method should called in every animation frame to keep the
+ * animation working.
  */
-void zmk_animation_request_frames_if_required(uint32_t decremental_counter,
-                                              bool initial);
+void zmk_animation_request_frames_cap(uint32_t decremental_counter);

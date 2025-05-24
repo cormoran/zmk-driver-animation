@@ -89,7 +89,7 @@ static void animation_battery_status_render_frame(
         pixels[config->pixel_map[i]].value = rgb;
     }
     data->counter = counter - 1;
-    zmk_animation_request_frames_if_required(data->counter, false);
+    zmk_animation_request_frames_cap(data->counter);
     if (data->counter == 0) {
         animation_stop(dev);
     }
@@ -106,7 +106,7 @@ static void animation_battery_status_start(const struct device *dev,
                                 : ANIMATION_DURATION_MS_TO_FRAMES(request_duration_ms);
     data->running         = true;
 
-    zmk_animation_request_frames_if_required(data->counter, true);
+    zmk_animation_request_frames_cap(data->counter);
 }
 
 static void animation_battery_status_stop(const struct device *dev) {
