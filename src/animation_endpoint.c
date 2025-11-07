@@ -6,22 +6,21 @@
 
 #define DT_DRV_COMPAT zmk_animation_endpoint
 
+#include <zephyr/bluetooth/bluetooth.h>
+#include <zephyr/bluetooth/conn.h>
 #include <zephyr/device.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
-
-#include <zephyr/bluetooth/bluetooth.h>
-#include <zephyr/bluetooth/conn.h>
-
 #include <zmk/ble.h>
 #include <zmk/endpoints.h>
 #include <zmk/event_manager.h>
-#include <zmk/events/endpoint_changed.h>
 #include <zmk/events/ble_active_profile_changed.h>
+#include <zmk/events/endpoint_changed.h>
 #include <zmk/events/split_peripheral_status_changed.h>
 #include <zmk/split/bluetooth/peripheral.h>
-#include <zmk_driver_animation/color.h>
+#include <zmk/split/wired/peripheral.h>
 #include <zmk_driver_animation/animation.h>
+#include <zmk_driver_animation/color.h>
 #include <zmk_driver_animation/drivers/animation.h>
 #include <zmk_driver_animation/drivers/animation_control.h>
 
@@ -43,6 +42,10 @@ enum ble_connection_status {
     BLE_STATUS_OPEN,
     BLE_STATUS_DISCONNECTED,
     BLE_STATUS_CONNECTED
+#if IS_SPLIT_PERIPHERAL
+    ,
+    BLE_STATUS_WIRED_CONNECTED  // TODO: it's not BLE status!
+#endif
 };
 
 struct animation_endpoint_config {
@@ -88,7 +91,9 @@ void refresh_ble_connection_status(const struct device *dev) {
         data->active_profile_status = BLE_STATUS_DISCONNECTED;
     }
 #elif IS_SPLIT_PERIPHERAL
-    if (!zmk_split_bt_peripheral_is_bonded()) {
+    if (zmk_split_wired_peripheral_is_healthy()) {
+        data->central_status = BLE_STATUS_WIRED_CONNECTED;
+    } else if (!zmk_split_bt_peripheral_is_bonded()) {
         data->central_status = BLE_STATUS_OPEN;
     } else if (zmk_split_bt_peripheral_is_connected()) {
         data->central_status = BLE_STATUS_CONNECTED;
@@ -174,6 +179,10 @@ static void update_pixels_peripheral(const struct device *dev,
     struct zmk_color_hsl color;
     bool animate = true;
     switch (data->central_status) {
+        case BLE_STATUS_WIRED_CONNECTED:
+            color   = *config->color_usb;
+            animate = false;
+            break;
         case BLE_STATUS_OPEN:
             color = *config->color_open;
             break;
