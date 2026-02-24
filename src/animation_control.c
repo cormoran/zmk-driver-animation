@@ -792,9 +792,11 @@ static const struct animation_control_api api = {
     static struct animation_control_data animation_control_##idx##_data = {  \
         .s =                                                                 \
             {                                                                \
-                .active                    = true,                           \
-                .powered_brightness        = 1,                              \
-                .battery_brightness        = 1,                              \
+                .active = true,                                              \
+                .powered_brightness =                                        \
+                    DT_INST_PROP(idx, default_powered_brightness),           \
+                .battery_brightness =                                        \
+                    DT_INST_PROP(idx, default_battery_brightness),           \
                 .current_powered_animation = 0,                              \
                 .current_battery_animation = 0,                              \
             },                                                               \
