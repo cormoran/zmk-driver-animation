@@ -6,14 +6,12 @@
 
 #define DT_DRV_COMPAT zmk_behavior_animation_layer_status
 
+#include <drivers/behavior.h>
+#include <dt-bindings/zmk_driver_animation/animation_layer_status.h>
 #include <zephyr/device.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
-
-#include <drivers/behavior.h>
-
 #include <zmk_driver_animation/drivers/animation_layer_status.h>
-#include <dt-bindings/zmk_driver_animation/animation_layer_status.h>
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
@@ -46,11 +44,19 @@ static int on_keymap_binding_released(struct zmk_behavior_binding *binding,
 static int behavior_animation_layer_status_init(const struct device *dev) {
     return 0;
 }
-
+#if IS_ENABLED(CONFIG_ZMK_BEHAVIOR_METADATA)
+static const struct behavior_parameter_metadata metadata = {
+    .sets_len = 0,
+    .sets     = NULL,
+};
+#endif
 static const struct behavior_driver_api behavior_animation_layer_status_api = {
     .binding_pressed  = on_keymap_binding_pressed,
     .binding_released = on_keymap_binding_released,
     .locality         = BEHAVIOR_LOCALITY_GLOBAL,
+#if IS_ENABLED(CONFIG_ZMK_BEHAVIOR_METADATA)
+    .parameter_metadata = &metadata,
+#endif  // IS_ENABLED(CONFIG_ZMK_BEHAVIOR_METADATA)
 };
 
 BEHAVIOR_DT_INST_DEFINE(0, behavior_animation_layer_status_init, NULL, NULL,
