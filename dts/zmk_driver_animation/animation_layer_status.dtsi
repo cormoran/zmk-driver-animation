@@ -9,7 +9,7 @@
 		animls: animls {
 			compatible = "zmk,behavior-animation-layer-status";
 			#binding-cells = <2>;
-			dislay-name = "Animation Layer Status";
+			display-name = "Animation Layer Status";
 		};
 	};
 	
