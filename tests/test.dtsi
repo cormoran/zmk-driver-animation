@@ -52,8 +52,8 @@
 	animation_control0: animation_control_0 {
 		compatible = "zmk,animation-control";
 		label = "ANIMATION_CONTROL";
-		powered-animations = <&animation_solid0>;
-		battery-animations = <&animation_solid0>;
+		powered-animations = <&animation_solid0 &animation_layer_status0>;
+		battery-animations = <&animation_solid0 &animation_layer_status0>;
 		behavior-animations = <&animation_solid0>;
 	};
 
@@ -73,7 +73,7 @@
 
 		default_layer {
 			bindings = <
-			&animctl ANIMATION_CONTROL_CMD_ENABLE 1
+			&animctl ANIMATION_CONTROL_CMD_ENABLE 0
 			&animctl ANIMATION_CONTROL_CMD_SHIFT 1
 			&animctl ANIMATION_CONTROL_CMD_SELECT 0
 			&animctl ANIMATION_CONTROL_CMD_BRIGHT 1

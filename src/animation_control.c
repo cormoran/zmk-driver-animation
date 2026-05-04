@@ -475,6 +475,7 @@ static void animation_control_api_impl_set_enabled(const struct device *dev,
     if (data->s.active == enabled) {
         return;
     }
+    LOG_INF("animation %s: set enabled %d", dev->name, enabled);
     data->s.active = enabled;
     if (data->s.active) {
         animation_start(dev, ANIMATION_DURATION_FOREVER);
@@ -512,8 +513,8 @@ static void animation_control_api_impl_set_next_animation(
     index_offset = index_offset % num_animations;
     uint8_t next_animation =
         (*current_animation + index_offset) % num_animations;
-    LOG_DBG("animation: change index %d -> %d", *current_animation,
-            next_animation);
+    LOG_INF("animation %s: change index %d -> %d", dev->name,
+            *current_animation, next_animation);
     *current_animation                   = next_animation;
     data->change_animation_if_cancelable = true;
     zmk_animation_request_frames(1);
@@ -535,6 +536,7 @@ static void animation_control_api_impl_set_animation(
                                          : config->battery_animations_size;
 
     index = index % num_animations;
+    LOG_INF("animation %s: select index %d", dev->name, index);
     if (*current_animation != index) {
         *current_animation                   = (uint8_t)index;
         data->change_animation_if_cancelable = true;
@@ -563,8 +565,8 @@ static void animation_control_api_impl_change_brightness(
     // reflect to brightness
     if (current_brightness != next_brightness) {
         *brightness_ref = next_brightness;
-        LOG_DBG("animation: change brightness %d->%d", current_brightness,
-                next_brightness);
+        LOG_INF("animation %s: change brightness %d->%d", dev->name,
+                current_brightness, next_brightness);
         if (next_brightness == 0) {
             animation_stop(dev);
         } else if (current_brightness == 0) {
