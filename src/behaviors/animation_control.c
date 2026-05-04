@@ -17,8 +17,7 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
 static int on_keymap_binding_pressed(struct zmk_behavior_binding *binding,
                                      struct zmk_behavior_binding_event event) {
-    // log binding
-    LOG_INF("binding: %d %d", binding->param1, binding->param2);
+    LOG_DBG("binding: %d %d", binding->param1, binding->param2);
     switch (binding->param1) {
         case ANIMATION_CONTROL_CMD_ENABLE:
             animation_control_set_enabled0(binding->param2);
@@ -43,6 +42,7 @@ static int on_keymap_binding_pressed(struct zmk_behavior_binding *binding,
 
 static int on_keymap_binding_released(struct zmk_behavior_binding *binding,
                                       struct zmk_behavior_binding_event event) {
+    LOG_DBG("binding: %d %d", binding->param1, binding->param2);
     return ZMK_BEHAVIOR_OPAQUE;
 }
 

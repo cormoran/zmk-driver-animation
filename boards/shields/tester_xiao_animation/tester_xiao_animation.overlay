@@ -6,7 +6,9 @@
 
 &xiao_spi {
     status = "okay";
-    cs-gpios = <>;
+    pinctrl-0 = <&spi2_default>;
+    pinctrl-1 = <&spi2_sleep>;
+    pinctrl-names = "default", "sleep";
 
     led_strip: ws2812@0 {
         compatible = "worldsemi,ws2812-spi";
@@ -25,7 +27,7 @@
     chosen {
         zmk,kscan = &kscan0;
         zmk,matrix-transform = &transform0;
-        zmk,animation = &animation;
+        zmk,animation = &animation_control0;
         zmk,animation-control = &animation_control0;
     };
 
@@ -52,6 +54,13 @@
         compatible = "zmk,animation-solid";
         pixels = <0>;
         colors = <HSL(120, 100, 50)>;
+    };
+
+    animation_layer_status0: animation_layer_status_0 {
+        compatible = "zmk,animation-layer-status";
+        pixels = <0>;
+        default-color = <HSL(0, 0, 100)>;
+        colors = <HSL(0, 100, 50)>;
     };
 
     animation_control0: animation_control_0 {

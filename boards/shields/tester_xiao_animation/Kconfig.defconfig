@@ -1,7 +1,7 @@
-if SHIELD_TESTER_XIAO
+if SHIELD_TESTER_XIAO_ANIMATION
 
 config ZMK_KEYBOARD_NAME
-    default "Tester XIAO"
+    default "Tester XIAO Animation"
 
 config ZMK_BLE
     def_bool n

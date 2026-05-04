@@ -55,7 +55,7 @@ class ZmkDriverAnimationTests(unittest.TestCase):
                 "zmk_driver_animation_xiao_ble": ConfigAndDeviceTree(
                     config=[
                         'CONFIG_ZMK_KEYBOARD_NAME="Module Test"',
-                        "CONFIG_SHIELD_TESTER_XIAO=y",
+                        "CONFIG_SHIELD_TESTER_XIAO_ANIMATION=y",
                         "CONFIG_ZMK_ANIMATION=y",
                         NotFound("CONFIG_SHOULD_NOT_EXIST"),
                     ],
