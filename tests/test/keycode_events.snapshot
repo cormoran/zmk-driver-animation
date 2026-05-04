@@ -1,9 +1,10 @@
-zmk: Welcome to ZMK!
-pressed: position 0 keycode 0x70004
-released: position 0 keycode 0x70004
-pressed: position 1 keycode 0x70005
-released: position 1 keycode 0x70005
-pressed: position 2 keycode 0x70006
-released: position 2 keycode 0x70006
-pressed: position 3 keycode 0x70007
-released: position 3 keycode 0x70007
+Animation control initialized
+zmk: ZMK Animation Ready
+pressed: binding: 0 1
+released: binding: 0 1
+pressed: binding: 1 1
+released: binding: 1 1
+pressed: binding: 3 0
+released: binding: 3 0
+pressed: binding: 4 1
+released: binding: 4 1

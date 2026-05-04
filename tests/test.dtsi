@@ -1,0 +1,96 @@
+#include <zmk_driver_animation/animation.dtsi>
+#include <behaviors/animation_control.dtsi>
+#include <dt-bindings/zmk_driver_animation/animation_control.h>
+#include <physical_layouts.dtsi>
+#include <dt-bindings/zmk/matrix_transform.h>
+
+/ {
+	physical_layout: physical_layout {
+		compatible = "zmk,physical-layout";
+		display-name = "Animation Test Layout";
+		keys
+			= <&key_physical_attrs 100 100    0    0 0 0 0>
+			, <&key_physical_attrs 100 100    0  100 0 0 0>
+			, <&key_physical_attrs 100 100    0  200 0 0 0>
+			, <&key_physical_attrs 100 100    0  300 0 0 0>
+			;
+		transform = <&transform0>;
+	};
+
+	transform0: transform0 {
+		compatible = "zmk,matrix-transform";
+		columns = <2>;
+		rows = <2>;
+		map = <RC(0,0) RC(0,1) RC(1,0) RC(1,1)>;
+	};
+
+	mock_led_strip: mock_led_strip_0 {
+		compatible = "zmk,mock-led-strip";
+		chain-length = <1>;
+	};
+
+	animation: animation {
+		compatible = "zmk,animation";
+		drivers = <&mock_led_strip>;
+		chain-lengths = <1>;
+		pixels = <&pixel 0 0>;
+	};
+
+	animation_solid0: animation_solid_0 {
+		compatible = "zmk,animation-solid";
+		pixels = <0>;
+		colors = <HSL(120, 100, 50)>;
+	};
+
+	animation_layer_status0: animation_layer_status_0 {
+		compatible = "zmk,animation-layer-status";
+		pixels = <0>;
+		default-color = <HSL(0, 0, 100)>;
+		colors = <HSL(0, 100, 50)>;
+	};
+
+	animation_control0: animation_control_0 {
+		compatible = "zmk,animation-control";
+		label = "ANIMATION_CONTROL";
+		powered-animations = <&animation_solid0>;
+		battery-animations = <&animation_solid0>;
+		behavior-animations = <&animation_solid0>;
+	};
+
+	chosen {
+		zmk,animation = &animation_control0;
+		zmk,animation-control = &animation_control0;
+	};
+};
+
+#include <dt-bindings/zmk/keys.h>
+#include <behaviors.dtsi>
+#include <dt-bindings/zmk/kscan_mock.h>
+
+/ {
+	keymap {
+		compatible = "zmk,keymap";
+
+		default_layer {
+			bindings = <
+			&animctl ANIMATION_CONTROL_CMD_ENABLE 1
+			&animctl ANIMATION_CONTROL_CMD_SHIFT 1
+			&animctl ANIMATION_CONTROL_CMD_SELECT 0
+			&animctl ANIMATION_CONTROL_CMD_BRIGHT 1
+			>;
+		};
+	};
+};
+
+&kscan {
+	events = <
+	ZMK_MOCK_PRESS(0,0,10)
+	ZMK_MOCK_RELEASE(0,0,10)
+	ZMK_MOCK_PRESS(0,1,10)
+	ZMK_MOCK_RELEASE(0,1,10)
+	ZMK_MOCK_PRESS(1,0,10)
+	ZMK_MOCK_RELEASE(1,0,10)
+	ZMK_MOCK_PRESS(1,1,10)
+	ZMK_MOCK_RELEASE(1,1,10)
+	>;
+};

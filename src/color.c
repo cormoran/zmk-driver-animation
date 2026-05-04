@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: MIT
  */
 
+#include <math.h>
 #include <stdlib.h>
 #include <zmk_driver_animation/color.h>
 
