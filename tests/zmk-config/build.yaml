@@ -1,0 +1,4 @@
+include:
+  - artifact: zmk_driver_animation_xiao_ble
+    board: xiao_ble//zmk
+    shield: tester_xiao

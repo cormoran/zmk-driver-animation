@@ -1,0 +1,5 @@
+file_format: "1"
+id: tester_xiao
+name: Tester XIAO
+type: shield
+requires: [seeed_xiao]

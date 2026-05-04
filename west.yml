@@ -1,0 +1,3 @@
+manifest:
+  self:
+    import: west/west-dependency

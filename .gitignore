@@ -1,0 +1,11 @@
+build/
+dependencies
+__pycache__/
+.vscode/*
+!.vscode/extensions.json
+.DS_Store
+_codeql_detected_source_root
+.ruff_cache/
+.west
+*.local.json
+.claude/worktrees
