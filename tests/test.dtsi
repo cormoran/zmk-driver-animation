@@ -13,15 +13,17 @@
 			, <&key_physical_attrs 100 100    0  100 0 0 0>
 			, <&key_physical_attrs 100 100    0  200 0 0 0>
 			, <&key_physical_attrs 100 100    0  300 0 0 0>
+			, <&key_physical_attrs 100 100    0  400 0 0 0>
+			, <&key_physical_attrs 100 100    0  500 0 0 0>
 			;
 		transform = <&transform0>;
 	};
 
 	transform0: transform0 {
 		compatible = "zmk,matrix-transform";
-		columns = <2>;
+		columns = <3>;
 		rows = <2>;
-		map = <RC(0,0) RC(0,1) RC(1,0) RC(1,1)>;
+		map = <RC(0,0) RC(0,1) RC(0,2) RC(1,0) RC(1,1) RC(1,2)>;
 	};
 
 	mock_led_strip: mock_led_strip_0 {
@@ -77,6 +79,8 @@
 			&animctl ANIMATION_CONTROL_CMD_SHIFT 1
 			&animctl ANIMATION_CONTROL_CMD_SELECT 0
 			&animctl ANIMATION_CONTROL_CMD_BRIGHT 1
+			&animctl ANIMATION_CONTROL_CMD_ENABLE 1
+			&animctl ANIMATION_CONTROL_CMD_BRIGHT 3
 			>;
 		};
 	};
@@ -88,9 +92,13 @@
 	ZMK_MOCK_RELEASE(0,0,10)
 	ZMK_MOCK_PRESS(0,1,10)
 	ZMK_MOCK_RELEASE(0,1,10)
+	ZMK_MOCK_PRESS(0,2,10)
+	ZMK_MOCK_RELEASE(0,2,10)
 	ZMK_MOCK_PRESS(1,0,10)
 	ZMK_MOCK_RELEASE(1,0,10)
 	ZMK_MOCK_PRESS(1,1,10)
 	ZMK_MOCK_RELEASE(1,1,10)
+	ZMK_MOCK_PRESS(1,2,10)
+	ZMK_MOCK_RELEASE(1,2,10)
 	>;
 };
