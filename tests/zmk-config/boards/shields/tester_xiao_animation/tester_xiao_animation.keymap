@@ -1,0 +1,15 @@
+#include <behaviors.dtsi>
+#include <dt-bindings/zmk/keys.h>
+#include <dt-bindings/zmk_driver_animation/animation_control.h>
+
+/ {
+    keymap {
+        compatible = "zmk,keymap";
+
+        default_layer {
+            bindings = <
+            &animctl ANIMATION_CONTROL_CMD_ENABLE 1
+            >;
+        };
+    };
+};

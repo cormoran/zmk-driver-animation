@@ -1,0 +1,69 @@
+name: Test ZMK Module
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - '**/*.md'
+      - .github/workflows/copilot-setup-steps.yml
+      - .github/workflows/devcontainer.yml
+      - .gitignore
+      - .claude/**
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    # 20:00 JST every Friday (11:00 UTC)
+    - cron: '0 11 * * 5'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    container:
+      image: zmkfirmware/zmk-build-arm:stable
+    name: Build
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Cache west modules
+        uses: actions/cache@v4
+        continue-on-error: true
+        env:
+          cache_name: cache-west-modules
+        with:
+          path: dependencies/
+          key: ${{ runner.os }}-build-${{ env.cache_name }}-${{hashFiles('west/**/west*.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-build-${{ env.cache_name }}-
+      - name: Init
+        run: |
+          git config --global --add safe.directory ${{ github.workspace }}
+          west init -l west --mf west-test-isolated.yml
+          west update --narrow
+          west zephyr-export
+      - name: Test
+        run: python3 -m unittest -v
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: zmk-firmware
+          path: |
+            build/*/zephyr/zmk.uf2
+
+  keepalive:
+    if: github.event_name == 'schedule'
+    permissions: write-all
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Re-enable workflow to avoid deactivating scheduled runs
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GIT_REPO: ${{ github.repository }}
+        run: |
+          gh workflow enable zmk-module.yml

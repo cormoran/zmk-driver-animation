@@ -1,0 +1,39 @@
+# See https://pre-commit.com for more information
+# See https://pre-commit.com/hooks.html for more hooks
+repos:
+  # Basic file checks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-added-large-files
+      - id: check-merge-conflict
+
+  # ZMK module: Python tests
+  - repo: local
+    hooks:
+      - id: zmk-module-test
+        name: zmk module tests
+        entry: python3 -m unittest -v
+        language: system
+        files: ^(src/|include/|tests/|CMakeLists\.txt|Kconfig|test\.py|west\.yml|west/|boards/|dts/|snippets/|zephyr/)
+        pass_filenames: false
+  - repo: https://github.com/pre-commit/mirrors-clang-format
+    rev: 75ca4ad908dc4a99f57921f29b7e6c1521e10b26
+    hooks:
+      - id: clang-format
+        name: clang-format
+        files: \.(c|h|proto)$
+        additional_dependencies: [clang-format==21.1.8]
+  # Lint for test script
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    # Ruff version.
+    rev: v0.15.10
+    hooks:
+      # Run the linter.
+      - id: ruff-check
+        args: [ --fix ]
+      # Run the formatter.
+      - id: ruff-format

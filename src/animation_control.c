@@ -152,6 +152,7 @@ static int animation_control_save_settings(const struct device *dev) {
 #endif /* IS_ENABLED(CONFIG_SETTINGS) */
 
 bool is_powered() {
+#if IS_ENABLED(CONFIG_USB_DEVICE_STACK)
     switch (zmk_usb_get_conn_state()) {
         case ZMK_USB_CONN_HID:
         case ZMK_USB_CONN_POWERED:
@@ -159,6 +160,9 @@ bool is_powered() {
         default:
             return false;
     }
+#else
+    return false;
+#endif /* IS_ENABLED(CONFIG_USB_DEVICE_STACK) */
 }
 
 const struct device *get_animation_for_current_power_state(
@@ -312,7 +316,8 @@ static bool animation_control_api_impl_is_finished(const struct device *dev) {
     return !data->running;
 }
 
-static void animation_control_api_impl_start(const struct device *dev) {
+static void animation_control_api_impl_start(const struct device *dev,
+                                              uint32_t request_duration_ms) {
     const struct animation_control_config *config = dev->config;
     struct animation_control_data *data           = dev->data;
     if (!data->s.active) {
@@ -470,6 +475,7 @@ static void animation_control_api_impl_set_enabled(const struct device *dev,
     if (data->s.active == enabled) {
         return;
     }
+    LOG_INF("animation %s: set enabled %d", dev->name, enabled);
     data->s.active = enabled;
     if (data->s.active) {
         animation_start(dev, ANIMATION_DURATION_FOREVER);
@@ -507,8 +513,8 @@ static void animation_control_api_impl_set_next_animation(
     index_offset = index_offset % num_animations;
     uint8_t next_animation =
         (*current_animation + index_offset) % num_animations;
-    LOG_DBG("animation: change index %d -> %d", *current_animation,
-            next_animation);
+    LOG_INF("animation %s: change index %d -> %d", dev->name,
+            *current_animation, next_animation);
     *current_animation                   = next_animation;
     data->change_animation_if_cancelable = true;
     zmk_animation_request_frames(1);
@@ -518,20 +524,21 @@ static void animation_control_api_impl_set_next_animation(
 }
 
 static void animation_control_api_impl_set_animation(
-    const struct device *dev, size_t index,
+    const struct device *dev, int index,
     enum animation_control_power_source power_source) {
     const struct animation_control_config *config = dev->config;
     struct animation_control_data *data           = dev->data;
 
-    bool powered              = select_powered(power_source);
-    size_t *current_animation = powered ? &data->s.current_powered_animation
-                                        : &data->s.current_battery_animation;
-    size_t num_animations     = powered ? config->powered_animations_size
-                                        : config->battery_animations_size;
+    bool powered               = select_powered(power_source);
+    uint8_t *current_animation = powered ? &data->s.current_powered_animation
+                                         : &data->s.current_battery_animation;
+    size_t num_animations      = powered ? config->powered_animations_size
+                                         : config->battery_animations_size;
 
     index = index % num_animations;
+    LOG_INF("animation %s: select index %d", dev->name, index);
     if (*current_animation != index) {
-        *current_animation                   = index;
+        *current_animation                   = (uint8_t)index;
         data->change_animation_if_cancelable = true;
         zmk_animation_request_frames(1);
 #if IS_ENABLED(CONFIG_SETTINGS)
@@ -558,8 +565,8 @@ static void animation_control_api_impl_change_brightness(
     // reflect to brightness
     if (current_brightness != next_brightness) {
         *brightness_ref = next_brightness;
-        LOG_DBG("animation: change brightness %d->%d", current_brightness,
-                next_brightness);
+        LOG_INF("animation %s: change brightness %d->%d", dev->name,
+                current_brightness, next_brightness);
         if (next_brightness == 0) {
             animation_stop(dev);
         } else if (current_brightness == 0) {
@@ -824,13 +831,16 @@ static const size_t control_animations_size =
     sizeof(animation_control_devices) / sizeof(animation_control_devices[0]);
 
 static int event_listener(const zmk_event_t *eh) {
+#if IS_ENABLED(CONFIG_USB_DEVICE_STACK)
     if (as_zmk_usb_conn_state_changed(eh)) {
         for (size_t i = 0; i < control_animations_size; i++) {
             animation_control_on_usb_conn_state_changed(
                 animation_control_devices[i],
                 as_zmk_usb_conn_state_changed(eh));
         }
-    } else if (as_zmk_activity_state_changed(eh)) {
+    } else
+#endif /* IS_ENABLED(CONFIG_USB_DEVICE_STACK) */
+    if (as_zmk_activity_state_changed(eh)) {
         for (size_t i = 0; i < control_animations_size; i++) {
             animation_control_on_activity_state_changed(
                 animation_control_devices[i],
@@ -841,7 +851,9 @@ static int event_listener(const zmk_event_t *eh) {
 }
 
 ZMK_LISTENER(animation_control, event_listener);
+#if IS_ENABLED(CONFIG_USB_DEVICE_STACK)
 ZMK_SUBSCRIPTION(animation_control, zmk_usb_conn_state_changed);
+#endif /* IS_ENABLED(CONFIG_USB_DEVICE_STACK) */
 ZMK_SUBSCRIPTION(animation_control, zmk_activity_state_changed);
 
 #endif /* DT_HAS_COMPAT_STATUS_OKAY(DT_DRV_COMPAT) */
