@@ -115,7 +115,7 @@ static void update_pixels_central(const struct device *dev,
     struct animation_endpoint_data *data           = dev->data;
 
     bool is_usb_selected =
-        zmk_endpoints_selected().transport == ZMK_TRANSPORT_USB;
+        zmk_endpoint_get_selected().transport == ZMK_TRANSPORT_USB;
 
     for (size_t i = 0; i < config->pixel_map_size; i++) {
         struct zmk_color_hsl color;

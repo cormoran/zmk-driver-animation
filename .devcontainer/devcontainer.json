@@ -1,0 +1,27 @@
+{
+  "name": "ZMK Development",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "containerEnv": {
+    "WORKSPACE_DIR": "${containerWorkspaceFolder}",
+    "PROMPT_COMMAND": "history -a",
+    // Required to share /root with other containers
+    "Zephyr_DIR": "${containerWorkspaceFolder}/dependencies/zephyr/share/zephyr-package/cmake/"
+  },
+  "mounts": [
+    "type=volume,source=zmk-dependencies-v4,target=/${containerWorkspaceFolder}/dependencies",
+    "type=volume,source=zmk-build,target=/${containerWorkspaceFolder}/build",
+    // The same to ZMK's official devcontainer
+    "type=volume,source=zmk-root-user,target=/root"
+  ],
+  "onCreateCommand": "bash .devcontainer/init.sh",
+  "customizations": {
+    "vscode": {
+      "extensions": ["ms-vscode.cpptools"],
+      "settings": {
+        "terminal.integrated.shell.linux": "/bin/bash"
+      }
+    }
+  }
+}

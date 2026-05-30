@@ -35,3 +35,8 @@ config ZMK_ANIMATION_TRIGGER_EXTEND_MS_ON_HOLD
 
 #ZMK_ANIMATION
 endif
+
+config ZMK_ANIMATION_MOCK_LED_STRIP
+    bool "Mock LED strip for animation testing"
+    depends on ZMK_ANIMATION
+    select LED_STRIP

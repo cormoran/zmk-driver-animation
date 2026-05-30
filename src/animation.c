@@ -191,7 +191,7 @@ static int zmk_animation_on_activity_state_changed(const zmk_event_t *event) {
     }
 }
 
-static int zmk_animation_init(const struct device *dev) {
+static int zmk_animation_init(void) {
 #if defined(CONFIG_ZMK_ANIMATION_PIXEL_DISTANCE) && \
     (CONFIG_ZMK_ANIMATION_PIXEL_DISTANCE == 1)
     // Prefill the pixel distance lookup table

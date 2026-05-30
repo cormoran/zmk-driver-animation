@@ -1,0 +1,19 @@
+Animation control initialized
+zmk: ZMK Animation Ready
+pressed: binding: 0 0
+set enabled 0
+released: binding: 0 0
+pressed: binding: 1 1
+released: binding: 1 1
+pressed: binding: 3 0
+select index 0
+released: binding: 3 0
+pressed: binding: 4 1
+change brightness 1->2
+released: binding: 4 1
+pressed: binding: 0 1
+set enabled 1
+released: binding: 0 1
+pressed: binding: 4 3
+change brightness 2->5
+released: binding: 4 3

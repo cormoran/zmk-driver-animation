@@ -1,0 +1,9 @@
+# List of this module's dependencies
+manifest:
+  remotes:
+    - name: zmkfirmware
+      url-base: https://github.com/zmkfirmware
+  # projects:
+  #   - name: repository-name
+  #     remote: remote-name
+  #     revision: branch-or-tag-name
