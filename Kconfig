@@ -17,6 +17,21 @@ config ZMK_ANIMATION_STUDIO_RPC
     bool "Enable animation feature custom Studio RPC"
     depends on ZMK_STUDIO
 
+config ZMK_ANIMATION_STUDIO_RPC_TEST
+    bool "Enable native_sim-only Studio RPC round-trip test hook"
+    depends on ZMK_ANIMATION_STUDIO_RPC
+    help
+      Adds a boot-time self-test (see tests/studio) that calls
+      zmk_animation_request_exec_handle() directly (bypassing RPC framing -
+      there is no serial/BLE transport in native_sim) for every request kind
+      defined in animation.proto, and logs the decoded response fields so
+      tests/studio's events.patterns/keycode_events.snapshot mechanism can
+      assert on them the same way every other native_sim test in this repo
+      does. Also drives a non-RPC state change (calling control.h directly,
+      the same path a keymap behavior would use) to prove
+      Notification.state_changed fires from that path too, not just from
+      RPC-originated mutations.
+
 config ZMK_ANIMATION_CUSTOM_SETTINGS
     bool "Enable animation runtime settings via zmk-feature-custom-settings"
     depends on ZMK_CUSTOM_SETTINGS

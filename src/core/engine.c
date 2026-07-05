@@ -187,6 +187,8 @@ void zmk_animation_request_frames_cap(uint32_t decremental_counter) {
                                      : decremental_counter);
 }
 
+size_t zmk_animation_pixel_count(void) { return pixels_size; }
+
 static void engine_stop(void) {
     /*
      * Order matters here: clear the budget before stopping the timer. If a
@@ -242,5 +244,12 @@ static int engine_init(void) {
 }
 
 SYS_INIT(engine_init, APPLICATION, CONFIG_APPLICATION_INIT_PRIORITY);
+
+#else /* !DT_HAS_COMPAT_STATUS_OKAY(DT_DRV_COMPAT) */
+
+/* No `zmk,animation` node (e.g. RPC-only native_sim builds with zero
+ * animation devices) - degrade to "0 pixels" so studio/animation_request_exec.c
+ * links and reports an empty capability set instead of crashing. */
+size_t zmk_animation_pixel_count(void) { return 0; }
 
 #endif /* DT_HAS_COMPAT_STATUS_OKAY(DT_DRV_COMPAT) */

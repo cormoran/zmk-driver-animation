@@ -2,19 +2,121 @@ syntax = "proto3";
 
 package cormoran.animation;
 
-message SampleRequest { int32 value = 1; }
-
-message SampleResponse { string value = 1; }
-
-message Request {
-    oneof request_type { SampleRequest sample = 1; }
+// Target power source for a brightness/select mutation. Unlike
+// `enum zmk_animation_power_source` in control.h, there is no CURRENT value
+// here: a web UI shows separate powered/battery controls and always sets a
+// concrete source explicitly (DESIGN.md #3.6 deviation, documented in the
+// Phase D report).
+enum PowerSource {
+    POWER_SOURCE_POWERED = 0;
+    POWER_SOURCE_BATTERY = 1;
 }
 
+// Overlay dispatch mode for TriggerAnimationRequest, mirrors
+// `enum zmk_animation_trigger_mode` in control.h.
+enum TriggerMode {
+    TRIGGER_MODE_ENQUEUE = 0;
+    TRIGGER_MODE_PLAY_NOW = 1;
+}
+
+// One entry in a GetInfoResponse animation list.
+message AnimationInfo {
+    uint32 index = 1;
+    string name = 2;
+}
+
+message GetInfoRequest {}
+
+message GetInfoResponse {
+    repeated AnimationInfo powered_animations = 1;
+    repeated AnimationInfo battery_animations = 2;
+    repeated AnimationInfo behavior_animations = 3;
+    uint32 num_pixels = 4;
+    uint32 fps = 5;
+    uint32 brightness_steps = 6;
+}
+
+message GetStateRequest {}
+
+// Full live control state (DESIGN.md #3.4), returned by GetState and as the
+// idempotent read-back of every Set*/Select/Trigger/StopOverlay request, and
+// pushed unsolicited via Notification.state_changed.
+message StateResponse {
+    bool enabled = 1;
+    uint32 brightness_powered = 2;
+    uint32 brightness_battery = 3;
+    uint32 selected_powered = 4;
+    uint32 selected_battery = 5;
+    // True if the board is currently USB-bus-powered (control/power_policy.c);
+    // determines which of the powered/battery base-animation selections is
+    // actually rendered.
+    bool is_powered = 6;
+    // True while an ad-hoc overlay (behavior trigger, RPC trigger, init/
+    // activation/low-battery animation, ...) is the thing being rendered
+    // instead of the selected base animation.
+    bool overlay_active = 7;
+    // Index into behavior_animations of the active overlay, only meaningful
+    // when overlay_active is true AND the active overlay's device matches one
+    // of the configured behavior-animations entries (has_overlay_index is
+    // false for overlays started by other means, e.g. init-animation,
+    // activation-animation or a low-battery alert that isn't itself in the
+    // behavior-animations list).
+    bool has_overlay_index = 8;
+    uint32 overlay_index = 9;
+}
+
+message SetEnabledRequest { bool enabled = 1; }
+
+message SetBrightnessRequest {
+    PowerSource power_source = 1;
+    uint32 step = 2;
+}
+
+message SelectAnimationRequest {
+    PowerSource power_source = 1;
+    uint32 index = 2;
+}
+
+message TriggerAnimationRequest {
+    uint32 index = 1;
+    uint32 duration_ms = 2;
+    TriggerMode mode = 3;
+    bool cancelable = 4;
+}
+
+// Stops the currently active ad-hoc overlay, if any. `index` is currently
+// unused (reserved: stopping a specific behavior-animations overlay by index
+// rather than "whatever is active" is not implemented in Phase D scope -
+// zmk_animation_trigger_stop() takes an index but overlay_queue.c has no
+// query for "what index is active" independent of the device-pointer
+// comparison request_exec.c already does for StateResponse.overlay_index).
+message StopOverlayRequest {}
+
 message ErrorResponse { string message = 1; }
+
+message Request {
+    oneof request_type {
+        GetInfoRequest get_info = 1;
+        GetStateRequest get_state = 2;
+        SetEnabledRequest set_enabled = 3;
+        SetBrightnessRequest set_brightness = 4;
+        SelectAnimationRequest select_animation = 5;
+        TriggerAnimationRequest trigger = 6;
+        StopOverlayRequest stop_overlay = 7;
+    }
+}
 
 message Response {
     oneof response_type {
         ErrorResponse error = 1;
-        SampleResponse sample = 2;
+        GetInfoResponse info = 2;
+        StateResponse state = 3;
     }
+}
+
+// Firmware -> web push, raised whenever control state changes for any reason
+// (RPC, keymap behavior, settings-restore, USB plug/unplug affecting the
+// active power source, ...) so a connected UI stays live.
+message Notification {
+    oneof notification_type { StateResponse state_changed = 1; }
 }

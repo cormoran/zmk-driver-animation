@@ -159,6 +159,16 @@ void zmk_animation_request_frames(uint32_t frames);
  */
 void zmk_animation_request_frames_cap(uint32_t decremental_counter);
 
+/**
+ * @brief Number of pixels in the `zmk,animation` engine's shared frame
+ * buffer (the `pixels` DT property's length), or 0 if no `zmk,animation`
+ * node is present (e.g. RPC-only native_sim builds with zero animation
+ * devices). Used by studio/animation_request_exec.c's GetInfoResponse
+ * (Phase D); nothing in core/ needs this at runtime since engine.c already
+ * knows its own array size at compile time.
+ */
+size_t zmk_animation_pixel_count(void);
+
 #ifdef __cplusplus
 }
 #endif

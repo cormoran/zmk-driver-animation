@@ -7,3 +7,10 @@ description: |
   represent "no animation selected" without the readiness-as-sentinel hack
   v1 used for its "empty" animation (DESIGN.md #4 item 9).
 compatible: "zmk,animation-none"
+
+properties:
+  display-name:
+    type: string
+    description: |
+      Human-readable name for this animation, surfaced by the Studio RPC
+      GetInfoResponse (Phase D). Falls back to the DT node name when unset.

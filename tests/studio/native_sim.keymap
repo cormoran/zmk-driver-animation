@@ -1,1 +1,63 @@
 #include "../test.dtsi"
+#include <dt-bindings/zmk/keys.h>
+#include <dt-bindings/zmk/kscan_mock.h>
+#include <zmk_driver_animation/animation.dtsi>
+#include <dt-bindings/zmk_driver_animation/animation_control.h>
+
+/*
+ * Phase D: exercises every cormoran.animation Studio RPC request kind via
+ * CONFIG_ZMK_ANIMATION_STUDIO_RPC_TEST's boot-time self-test
+ * (src/test/animation_studio_test.c), plus a non-RPC (behavior-path) state
+ * change to prove Notification.state_changed fires from both. Real
+ * animation devices (not a zero-device build) so GetInfoResponse actually
+ * has entries to report, exercising the response-buffer-sizing pitfall for
+ * real (see native_sim.conf's CONFIG_ZMK_STUDIO_RPC_TX_BUF_SIZE).
+ */
+
+/ {
+    mock_led_strip0: mock_led_strip_0 {
+        compatible = "zmk,mock-led-strip";
+        chain-length = <2>;
+    };
+
+    animation: animation {
+        compatible = "zmk,animation";
+        drivers = <&mock_led_strip0>;
+        chain-lengths = <2>;
+        pixels = <&pixel 0 0>, <&pixel 1 0>;
+    };
+
+    animation_solid0: animation_solid_0 {
+        compatible = "zmk,animation-solid";
+        display-name = "Red";
+        pixels = <0 1>;
+        colors = <HSL(0, 100, 50)>;
+    };
+
+    animation_solid1: animation_solid_1 {
+        compatible = "zmk,animation-solid";
+        display-name = "Green";
+        pixels = <0 1>;
+        colors = <HSL(120, 100, 50)>;
+    };
+
+    animation_overlay0: animation_overlay_0 {
+        compatible = "zmk,animation-solid";
+        display-name = "Trigger Blue";
+        pixels = <0 1>;
+        colors = <HSL(240, 100, 50)>;
+    };
+
+    animation_control0: animation_control_0 {
+        compatible = "zmk,animation-control";
+        powered-animations = <&animation_solid0 &animation_solid1>;
+        battery-animations = <&animation_solid0 &animation_solid1>;
+        behavior-animations = <&animation_overlay0>;
+        brightness-steps = <5>;
+    };
+
+    chosen {
+        zmk,animation = &animation_control0;
+        zmk,animation-control = &animation_control0;
+    };
+};

@@ -56,12 +56,28 @@ static const struct device *control_dev;
 
 #define PHANDLE_TO_DEVICE(node_id, prop, idx) DEVICE_DT_GET(DT_PHANDLE_BY_IDX(node_id, prop, idx)),
 
+/*
+ * Display name for one phandle-list entry (DESIGN.md #3.6 GetInfoResponse):
+ * the referenced animation node's `display-name` DT property if set, else
+ * its DT node name. Resolved at compile time per phandle-list entry - not a
+ * per-device runtime lookup - since the phandle target is statically known
+ * here the same way PHANDLE_TO_DEVICE resolves DEVICE_DT_GET.
+ */
+#define PHANDLE_TO_INFO_ENTRY(node_id, prop, idx)                                                  \
+    {                                                                                              \
+        .name = DT_PROP_OR(DT_PHANDLE_BY_IDX(node_id, prop, idx), display_name,                    \
+                           DT_NODE_FULL_NAME(DT_PHANDLE_BY_IDX(node_id, prop, idx))),              \
+    },
+
 struct animation_control_config {
     const struct device *const *powered_animations;
+    const struct zmk_animation_info_entry *powered_animation_names;
     size_t powered_animations_size;
     const struct device *const *battery_animations;
+    const struct zmk_animation_info_entry *battery_animation_names;
     size_t battery_animations_size;
     const struct device *const *behavior_animations;
+    const struct zmk_animation_info_entry *behavior_animation_names;
     size_t behavior_animations_size;
     const struct device *init_animation;
     uint32_t init_animation_duration_ms;
@@ -312,6 +328,29 @@ static const struct zmk_animation_api control_api = {
 #define ANIMATION_SETTINGS_WRITE_SELECT(powered, index)
 #endif
 
+/*
+ * State-changed notification hook (DESIGN.md #3.6): a single direct
+ * callback rather than a full ZMK_EVENT_DECLARE/ZMK_EVENT_RAISE event type,
+ * since there is exactly one consumer in-module (the Studio RPC handler,
+ * compiled only under CONFIG_ZMK_ANIMATION_STUDIO_RPC) and no other module
+ * needs to observe animation state changes - a cross-module event type would
+ * be pure overhead for a single subscriber. Mirrors the
+ * ANIMATION_SETTINGS_WRITE_* pattern above: called unconditionally from
+ * every mutation call site below (a no-op NULL-check when no RPC handler has
+ * registered, e.g. CONFIG_ZMK_ANIMATION_STUDIO_RPC=n).
+ */
+static zmk_animation_state_changed_cb_t state_changed_cb;
+
+void zmk_animation_set_state_changed_callback(zmk_animation_state_changed_cb_t callback) {
+    state_changed_cb = callback;
+}
+
+static void notify_state_changed(void) {
+    if (state_changed_cb != NULL) {
+        state_changed_cb();
+    }
+}
+
 void zmk_animation_set_enabled(bool enabled) {
     if (control_dev == NULL || !device_is_ready(control_dev)) {
         LOG_WRN("animation control not ready, ignoring set_enabled");
@@ -329,6 +368,7 @@ void zmk_animation_set_enabled(bool enabled) {
         control_stop(control_dev);
     }
     ANIMATION_SETTINGS_WRITE_ENABLED(enabled);
+    notify_state_changed();
 }
 
 static bool power_source_is_powered(enum zmk_animation_power_source power_source) {
@@ -364,6 +404,7 @@ void zmk_animation_set_brightness_shift(int steps, enum zmk_animation_power_sour
         LOG_INF("animation control: change brightness %d->%d", current, next);
         *ref = (uint8_t)next;
         ANIMATION_SETTINGS_WRITE_BRIGHTNESS(powered, *ref);
+        notify_state_changed();
     }
 }
 
@@ -377,6 +418,7 @@ void zmk_animation_set_brightness(uint8_t step, enum zmk_animation_power_source 
     uint8_t *ref = brightness_ref(power_source);
     *ref = step > config->brightness_steps ? config->brightness_steps : step;
     ANIMATION_SETTINGS_WRITE_BRIGHTNESS(powered, *ref);
+    notify_state_changed();
 }
 
 static uint8_t *selected_ref(enum zmk_animation_power_source power_source, size_t *out_size) {
@@ -421,6 +463,7 @@ void zmk_animation_select_shift(int index_offset, enum zmk_animation_power_sourc
     ANIMATION_SETTINGS_WRITE_SELECT(powered, *ref);
 
     refresh_base_animation(control_dev);
+    notify_state_changed();
 }
 
 void zmk_animation_select(uint8_t index, enum zmk_animation_power_source power_source) {
@@ -442,6 +485,7 @@ void zmk_animation_select(uint8_t index, enum zmk_animation_power_source power_s
     ANIMATION_SETTINGS_WRITE_SELECT(powered, *ref);
 
     refresh_base_animation(control_dev);
+    notify_state_changed();
 }
 
 int zmk_animation_trigger(uint8_t index, uint32_t duration_ms, enum zmk_animation_trigger_mode mode,
@@ -474,15 +518,20 @@ int zmk_animation_trigger(uint8_t index, uint32_t duration_ms, enum zmk_animatio
      * two distinctly-named overlay_queue.h functions directly.
      * tests/overlay_queue exercises both to catch a regression.
      */
+    int rc;
     switch (mode) {
     case ZMK_ANIMATION_TRIGGER_ENQUEUE:
-        return zmk_overlay_enqueue(config->overlay_msgq, &record);
+        rc = zmk_overlay_enqueue(config->overlay_msgq, &record);
+        break;
     case ZMK_ANIMATION_TRIGGER_PLAY_NOW:
         zmk_overlay_play_now(config->overlay_msgq, &record);
-        return 0;
+        rc = 0;
+        break;
     default:
         return -EINVAL;
     }
+    notify_state_changed();
+    return rc;
 }
 
 int zmk_animation_trigger_stop(uint8_t index) {
@@ -494,6 +543,7 @@ int zmk_animation_trigger_stop(uint8_t index) {
         return -EINVAL;
     }
     zmk_overlay_stop_if_active(config->overlay_msgq, config->behavior_animations[index]);
+    notify_state_changed();
     return 0;
 }
 
@@ -511,7 +561,72 @@ int zmk_animation_enqueue(const struct device *animation, bool cancelable, uint3
         .cancelable = cancelable,
         .duration_ms = duration_ms,
     };
-    return zmk_overlay_enqueue(config->overlay_msgq, &record);
+    int rc = zmk_overlay_enqueue(config->overlay_msgq, &record);
+    notify_state_changed();
+    return rc;
+}
+
+/*
+ * Resolves the active overlay's device (if any) back to an index into
+ * behavior_animations, for StateResponse.overlay_index (Phase D). Returns
+ * -1 if no overlay is active or its device isn't one of the
+ * behavior-animations entries (e.g. it was started via
+ * zmk_animation_enqueue() directly - init/activation animation, low-battery
+ * alert - rather than zmk_animation_trigger()).
+ */
+static int overlay_behavior_index(const struct animation_control_config *config,
+                                  const struct device *overlay_animation) {
+    if (overlay_animation == NULL) {
+        return -1;
+    }
+    for (size_t i = 0; i < config->behavior_animations_size; i++) {
+        if (config->behavior_animations[i] == overlay_animation) {
+            return (int)i;
+        }
+    }
+    return -1;
+}
+
+void zmk_animation_get_info(struct zmk_animation_info *out) {
+    *out = (struct zmk_animation_info){0};
+    out->num_pixels = zmk_animation_pixel_count();
+    out->fps = CONFIG_ZMK_ANIMATION_FPS;
+
+    if (control_dev == NULL) {
+        return;
+    }
+    const struct animation_control_config *config = control_dev->config;
+
+    out->powered_animations = config->powered_animation_names;
+    out->powered_animations_size = config->powered_animations_size;
+    out->battery_animations = config->battery_animation_names;
+    out->battery_animations_size = config->battery_animations_size;
+    out->behavior_animations = config->behavior_animation_names;
+    out->behavior_animations_size = config->behavior_animations_size;
+    out->brightness_steps = config->brightness_steps;
+}
+
+void zmk_animation_get_state(struct zmk_animation_state *out) {
+    *out = (struct zmk_animation_state){0};
+
+    if (control_dev == NULL || !device_is_ready(control_dev)) {
+        return;
+    }
+    const struct animation_control_config *config = control_dev->config;
+    struct animation_control_data *data = control_dev->data;
+
+    out->enabled = data->enabled;
+    out->brightness_powered = data->brightness_powered;
+    out->brightness_battery = data->brightness_battery;
+    out->selected_powered = data->selected_powered;
+    out->selected_battery = data->selected_battery;
+    out->is_powered = zmk_animation_power_policy_is_powered();
+
+    struct zmk_overlay_record active = zmk_overlay_current();
+    out->overlay_active = zmk_overlay_is_active();
+    int index = overlay_behavior_index(config, active.animation);
+    out->has_overlay_index = index >= 0;
+    out->overlay_index = out->has_overlay_index ? (uint8_t)index : 0;
 }
 
 /* --- init + event listeners --- */
@@ -572,6 +687,11 @@ animation_control_on_usb_conn_state_changed(const struct device *dev,
     if (data->running) {
         refresh_base_animation(dev);
     }
+    /* USB plug/unplug changes zmk_animation_power_policy_is_powered(), which
+     * StateResponse.is_powered (Phase D) surfaces - notify regardless of
+     * `data->running` so a connected web UI's power-source indicator stays
+     * live even while animation rendering itself is stopped/disabled. */
+    notify_state_changed();
     return 0;
 }
 #endif
@@ -666,16 +786,26 @@ static int animation_control_init(const struct device *dev) {
     static const struct device *animation_control_##idx##_behavior[] = {                           \
         DT_INST_FOREACH_PROP_ELEM(idx, behavior_animations, PHANDLE_TO_DEVICE)};                   \
                                                                                                    \
+    static const struct zmk_animation_info_entry animation_control_##idx##_powered_names[] = {     \
+        DT_INST_FOREACH_PROP_ELEM(idx, powered_animations, PHANDLE_TO_INFO_ENTRY)};                \
+    static const struct zmk_animation_info_entry animation_control_##idx##_battery_names[] = {     \
+        DT_INST_FOREACH_PROP_ELEM(idx, battery_animations, PHANDLE_TO_INFO_ENTRY)};                \
+    static const struct zmk_animation_info_entry animation_control_##idx##_behavior_names[] = {    \
+        DT_INST_FOREACH_PROP_ELEM(idx, behavior_animations, PHANDLE_TO_INFO_ENTRY)};               \
+                                                                                                   \
     static char animation_control_##idx##_overlay_buffer[DT_INST_PROP(idx, queue_size) *           \
                                                          sizeof(struct zmk_overlay_record)];       \
     static struct k_msgq animation_control_##idx##_overlay_msgq;                                   \
                                                                                                    \
     static const struct animation_control_config animation_control_##idx##_config = {              \
         .powered_animations = animation_control_##idx##_powered,                                   \
+        .powered_animation_names = animation_control_##idx##_powered_names,                        \
         .powered_animations_size = DT_INST_PROP_LEN(idx, powered_animations),                      \
         .battery_animations = animation_control_##idx##_battery,                                   \
+        .battery_animation_names = animation_control_##idx##_battery_names,                        \
         .battery_animations_size = DT_INST_PROP_LEN(idx, battery_animations),                      \
         .behavior_animations = animation_control_##idx##_behavior,                                 \
+        .behavior_animation_names = animation_control_##idx##_behavior_names,                      \
         .behavior_animations_size = DT_INST_PROP_LEN(idx, behavior_animations),                    \
         .init_animation = DEVICE_DT_GET_OR_NULL(DT_INST_PHANDLE(idx, init_animation)),             \
         .init_animation_duration_ms = DT_INST_PROP(idx, init_animation_duration_ms),               \
@@ -764,6 +894,23 @@ int zmk_animation_enqueue(const struct device *animation, bool cancelable, uint3
     ARG_UNUSED(cancelable);
     ARG_UNUSED(duration_ms);
     return -ENODEV;
+}
+
+void zmk_animation_get_info(struct zmk_animation_info *out) {
+    *out = (struct zmk_animation_info){0};
+    out->num_pixels = zmk_animation_pixel_count();
+    out->fps = CONFIG_ZMK_ANIMATION_FPS;
+}
+
+void zmk_animation_get_state(struct zmk_animation_state *out) {
+    *out = (struct zmk_animation_state){0};
+}
+
+/* No control device to raise state-changed notifications for, but the
+ * registration function itself must still link (studio/animation_handler.c
+ * calls it unconditionally at init). */
+void zmk_animation_set_state_changed_callback(zmk_animation_state_changed_cb_t callback) {
+    ARG_UNUSED(callback);
 }
 
 #endif /* DT_HAS_COMPAT_STATUS_OKAY(DT_DRV_COMPAT) */

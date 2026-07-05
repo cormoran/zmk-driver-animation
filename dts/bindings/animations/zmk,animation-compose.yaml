@@ -31,3 +31,9 @@ properties:
       If true, all children play in parallel; the composition finishes when
       all children finish. If false (default), children play sequentially
       in DT order; the composition finishes when the last one finishes.
+
+  display-name:
+    type: string
+    description: |
+      Human-readable name for this animation, surfaced by the Studio RPC
+      GetInfoResponse (Phase D). Falls back to the DT node name when unset.

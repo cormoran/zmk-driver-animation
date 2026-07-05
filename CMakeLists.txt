@@ -44,6 +44,10 @@ if(CONFIG_ZMK_ANIMATION_SETTINGS_TEST)
     target_sources(app PRIVATE src/test/animation_settings_test.c)
 endif()
 
+if(CONFIG_ZMK_ANIMATION_STUDIO_RPC_TEST)
+    target_sources(app PRIVATE src/test/animation_studio_test.c)
+endif()
+
 if(CONFIG_ZMK_ANIMATION_STUDIO_RPC)
     file(GLOB_RECURSE C_FILES ${CMAKE_CURRENT_SOURCE_DIR}/src/studio/*.c)
     target_sources(app PRIVATE ${C_FILES})

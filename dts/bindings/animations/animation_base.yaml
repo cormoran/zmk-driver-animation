@@ -12,3 +12,11 @@ properties:
     required: true
     description: |
       Pixel positions to which the animation should apply.
+
+  display-name:
+    type: string
+    description: |
+      Human-readable name for this animation, surfaced by the Studio RPC
+      GetInfoResponse (Phase D) so a web UI can list animations by name
+      instead of raw DT node names. Falls back to the DT node name
+      (`DT_NODE_FULL_NAME`) when unset.

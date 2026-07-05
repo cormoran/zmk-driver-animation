@@ -1,5 +1,20 @@
 # Nanopb options file for animation.proto
-# This defines max sizes for string fields
+# This defines max sizes for string fields and max counts for repeated fields
 
-cormoran.animation.SampleResponse.value    max_size:64
-cormoran.animation.ErrorResponse.message   max_size:64
+cormoran.animation.ErrorResponse.message              max_size:24
+
+# Animation display names (DT `display-name` property, falling back to the
+# DT node name) - 24 bytes is generous for a short label like "Rainbow" or
+# "Battery Status" while keeping GetInfoResponse's encoded size bounded.
+cormoran.animation.AnimationInfo.name                 max_size:24
+
+# List sizes bounded above any realistic keyboard's DT-fixed animation lists
+# (control.c's BUILD_ASSERT caps this module to one animation-control
+# instance, but not the length of its phandle lists) while keeping
+# GetInfoResponse's worst-case encoded size affordable for
+# CONFIG_ZMK_STUDIO_RPC_TX_BUF_SIZE - verified in tests/studio
+# (log_get_info_worst_case_encoded_size(): every list filled to max_count
+# with max_size-length names encodes to ~530 bytes at max_count:6).
+cormoran.animation.GetInfoResponse.powered_animations   max_count:6
+cormoran.animation.GetInfoResponse.battery_animations   max_count:6
+cormoran.animation.GetInfoResponse.behavior_animations  max_count:6

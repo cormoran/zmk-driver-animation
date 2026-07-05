@@ -50,6 +50,80 @@ enum zmk_animation_trigger_mode {
     ZMK_ANIMATION_TRIGGER_PLAY_NOW,
 };
 
+/** One entry in the capability lists returned by `zmk_animation_get_info()`. */
+struct zmk_animation_info_entry {
+    /** Display name: the DT `display-name` property if set, else the DT
+     * node name (`device->name`). Points at static/rodata storage (either a
+     * DT-property string literal or `device->name`), valid for the process
+     * lifetime - safe to copy by pointer into a response without a static
+     * buffer of its own. */
+    const char *name;
+};
+
+/**
+ * Static capability info (DESIGN.md #3.6 GetInfoResponse): the DT-fixed
+ * powered/battery/behavior animation lists (as display-name entries, index
+ * implied by array position) plus global capability numbers. All array
+ * pointers are valid for the process lifetime (backed by control.c's
+ * compile-time DT arrays) and NULL with size 0 when no control device is
+ * registered.
+ */
+struct zmk_animation_info {
+    const struct zmk_animation_info_entry *powered_animations;
+    size_t powered_animations_size;
+    const struct zmk_animation_info_entry *battery_animations;
+    size_t battery_animations_size;
+    const struct zmk_animation_info_entry *behavior_animations;
+    size_t behavior_animations_size;
+    size_t num_pixels;
+    uint32_t fps;
+    uint8_t brightness_steps;
+};
+
+/** Fills `out` with the current static capability info. Safe to call with
+ * no control device registered (returns all-zero lists). */
+void zmk_animation_get_info(struct zmk_animation_info *out);
+
+/**
+ * Full live control state (DESIGN.md #3.4), used for both GetStateRequest
+ * and the idempotent read-back every Set/Select/Trigger/StopOverlay RPC
+ * returns.
+ */
+struct zmk_animation_state {
+    bool enabled;
+    uint8_t brightness_powered;
+    uint8_t brightness_battery;
+    uint8_t selected_powered;
+    uint8_t selected_battery;
+    /** True if the board is currently USB-bus-powered. */
+    bool is_powered;
+    /** True while an ad-hoc overlay is the thing being rendered. */
+    bool overlay_active;
+    /** Whether `overlay_index` below is meaningful (the active overlay's
+     * device matches one of `behavior-animations`; false for overlays
+     * started by other means, e.g. init/activation animation or a low-
+     * battery alert not itself in `behavior-animations`). */
+    bool has_overlay_index;
+    uint8_t overlay_index;
+};
+
+/** Fills `out` with the current live control state. Safe to call with no
+ * control device registered (returns a disabled/idle default state). */
+void zmk_animation_get_state(struct zmk_animation_state *out);
+
+/**
+ * Registers a callback invoked every time control state changes, for any
+ * reason (RPC, keymap behavior, settings-restore boot-apply, USB plug/
+ * unplug affecting the active power source, ...). Used by the Studio RPC
+ * handler (Phase D) to raise a `Notification.state_changed` so a connected
+ * web UI stays live without polling. At most one callback is supported
+ * (there is exactly one in-module RPC consumer; see DESIGN.md #3.6's note on
+ * why this is a plain callback rather than a full ZMK event type) - a
+ * second call replaces the previous callback. Pass NULL to unregister.
+ */
+typedef void (*zmk_animation_state_changed_cb_t)(void);
+void zmk_animation_set_state_changed_callback(zmk_animation_state_changed_cb_t callback);
+
 /** Enable/disable animation rendering entirely (all power sources). */
 void zmk_animation_set_enabled(bool enabled);
 
