@@ -168,20 +168,20 @@ static const struct zmk_animation_api animation_compose_api = {
 #define PHANDLE_TO_DEVICE(node_id, prop, idx) DEVICE_DT_GET(DT_PHANDLE_BY_IDX(node_id, prop, idx)),
 
 #define ANIMATION_COMPOSE_DEVICE(idx)                                                              \
-                                                                                                    \
-    static struct animation_compose_data animation_compose_##idx##_data;                          \
-                                                                                                    \
-    static const struct device *animation_compose_##idx##_animations[] = {                        \
-        DT_INST_FOREACH_PROP_ELEM(idx, animations, PHANDLE_TO_DEVICE)};                           \
+                                                                                                   \
+    static struct animation_compose_data animation_compose_##idx##_data;                           \
+                                                                                                   \
+    static const struct device *animation_compose_##idx##_animations[] = {                         \
+        DT_INST_FOREACH_PROP_ELEM(idx, animations, PHANDLE_TO_DEVICE)};                            \
     static const uint32_t animation_compose_##idx##_durations[] = DT_INST_PROP(idx, durations_ms); \
-                                                                                                    \
-    static const struct animation_compose_config animation_compose_##idx##_config = {             \
-        .animations = animation_compose_##idx##_animations,                                       \
-        .durations_ms = animation_compose_##idx##_durations,                                      \
-        .num_animations = DT_INST_PROP_LEN(idx, animations),                                      \
-        .parallel = DT_INST_PROP(idx, parallel),                                                  \
-    };                                                                                            \
-                                                                                                    \
+                                                                                                   \
+    static const struct animation_compose_config animation_compose_##idx##_config = {              \
+        .animations = animation_compose_##idx##_animations,                                        \
+        .durations_ms = animation_compose_##idx##_durations,                                       \
+        .num_animations = DT_INST_PROP_LEN(idx, animations),                                       \
+        .parallel = DT_INST_PROP(idx, parallel),                                                   \
+    };                                                                                             \
+                                                                                                   \
     DEVICE_DT_INST_DEFINE(idx, &animation_compose_init, NULL, &animation_compose_##idx##_data,     \
                           &animation_compose_##idx##_config, POST_KERNEL,                          \
                           CONFIG_APPLICATION_INIT_PRIORITY, &animation_compose_api);

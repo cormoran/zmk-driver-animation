@@ -108,7 +108,10 @@ class WestCommandsTests(unittest.TestCase):
                     ],
                     device=[
                         "DT_COMPAT_HAS_OKAY_zmk_animation",
+                        "DT_COMPAT_HAS_OKAY_zmk_animation_control",
                         "DT_COMPAT_HAS_OKAY_zmk_animation_solid",
+                        "DT_COMPAT_HAS_OKAY_zmk_animation_layer_status",
+                        "DT_COMPAT_HAS_OKAY_zmk_behavior_animation_control",
                         "DT_COMPAT_HAS_OKAY_worldsemi_ws2812_spi",
                     ],
                 ),

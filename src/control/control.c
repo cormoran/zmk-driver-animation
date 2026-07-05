@@ -462,14 +462,15 @@ static void init_animation_work_handler(struct k_work *work) {
         return;
     }
     uint32_t duration_ms = config->init_animation_duration_ms > 0
-                                ? config->init_animation_duration_ms
-                                : ZMK_ANIMATION_DURATION_FOREVER;
+                               ? config->init_animation_duration_ms
+                               : ZMK_ANIMATION_DURATION_FOREVER;
     zmk_animation_enqueue(config->init_animation, false, duration_ms);
 }
 
 #if IS_ENABLED(CONFIG_USB_DEVICE_STACK)
-static int animation_control_on_usb_conn_state_changed(const struct device *dev,
-                                                        const struct zmk_usb_conn_state_changed *event) {
+static int
+animation_control_on_usb_conn_state_changed(const struct device *dev,
+                                            const struct zmk_usb_conn_state_changed *event) {
     ARG_UNUSED(event);
     struct animation_control_data *data = dev->data;
     if (data->running) {
@@ -479,15 +480,17 @@ static int animation_control_on_usb_conn_state_changed(const struct device *dev,
 }
 #endif
 
-static int animation_control_on_activity_state_changed(const struct device *dev,
-                                                        const struct zmk_activity_state_changed *event) {
+static int
+animation_control_on_activity_state_changed(const struct device *dev,
+                                            const struct zmk_activity_state_changed *event) {
     const struct animation_control_config *config = dev->config;
     struct animation_control_data *data = dev->data;
 
-    if (event->state == ZMK_ACTIVITY_ACTIVE && data->running && config->activation_animation != NULL) {
+    if (event->state == ZMK_ACTIVITY_ACTIVE && data->running &&
+        config->activation_animation != NULL) {
         uint32_t duration_ms = config->activation_animation_duration_ms > 0
-                                    ? config->activation_animation_duration_ms
-                                    : ZMK_ANIMATION_DURATION_FOREVER;
+                                   ? config->activation_animation_duration_ms
+                                   : ZMK_ANIMATION_DURATION_FOREVER;
         zmk_animation_enqueue(config->activation_animation, false, duration_ms);
     }
     return 0;
@@ -549,48 +552,48 @@ static int animation_control_init(const struct device *dev) {
     return 0;
 }
 
-#define ANIMATION_CONTROL_DEVICE(idx)                                                             \
+#define ANIMATION_CONTROL_DEVICE(idx)                                                              \
                                                                                                    \
-    static const struct device *animation_control_##idx##_powered[] = {                           \
-        DT_INST_FOREACH_PROP_ELEM(idx, powered_animations, PHANDLE_TO_DEVICE)};                   \
-    static const struct device *animation_control_##idx##_battery[] = {                           \
-        DT_INST_FOREACH_PROP_ELEM(idx, battery_animations, PHANDLE_TO_DEVICE)};                   \
-    static const struct device *animation_control_##idx##_behavior[] = {                          \
-        DT_INST_FOREACH_PROP_ELEM(idx, behavior_animations, PHANDLE_TO_DEVICE)};                  \
+    static const struct device *animation_control_##idx##_powered[] = {                            \
+        DT_INST_FOREACH_PROP_ELEM(idx, powered_animations, PHANDLE_TO_DEVICE)};                    \
+    static const struct device *animation_control_##idx##_battery[] = {                            \
+        DT_INST_FOREACH_PROP_ELEM(idx, battery_animations, PHANDLE_TO_DEVICE)};                    \
+    static const struct device *animation_control_##idx##_behavior[] = {                           \
+        DT_INST_FOREACH_PROP_ELEM(idx, behavior_animations, PHANDLE_TO_DEVICE)};                   \
                                                                                                    \
-    static char animation_control_##idx##_overlay_buffer[DT_INST_PROP(idx, queue_size) *          \
-                                                          sizeof(struct zmk_overlay_record)];      \
-    static struct k_msgq animation_control_##idx##_overlay_msgq;                                  \
+    static char animation_control_##idx##_overlay_buffer[DT_INST_PROP(idx, queue_size) *           \
+                                                         sizeof(struct zmk_overlay_record)];       \
+    static struct k_msgq animation_control_##idx##_overlay_msgq;                                   \
                                                                                                    \
-    static const struct animation_control_config animation_control_##idx##_config = {             \
-        .powered_animations = animation_control_##idx##_powered,                                  \
-        .powered_animations_size = DT_INST_PROP_LEN(idx, powered_animations),                     \
-        .battery_animations = animation_control_##idx##_battery,                                  \
-        .battery_animations_size = DT_INST_PROP_LEN(idx, battery_animations),                     \
-        .behavior_animations = animation_control_##idx##_behavior,                                \
-        .behavior_animations_size = DT_INST_PROP_LEN(idx, behavior_animations),                   \
-        .init_animation = DEVICE_DT_GET_OR_NULL(DT_INST_PHANDLE(idx, init_animation)),            \
-        .init_animation_duration_ms = DT_INST_PROP(idx, init_animation_duration_ms),              \
-        .init_animation_delay_ms = DT_INST_PROP(idx, init_animation_delay_ms),                    \
+    static const struct animation_control_config animation_control_##idx##_config = {              \
+        .powered_animations = animation_control_##idx##_powered,                                   \
+        .powered_animations_size = DT_INST_PROP_LEN(idx, powered_animations),                      \
+        .battery_animations = animation_control_##idx##_battery,                                   \
+        .battery_animations_size = DT_INST_PROP_LEN(idx, battery_animations),                      \
+        .behavior_animations = animation_control_##idx##_behavior,                                 \
+        .behavior_animations_size = DT_INST_PROP_LEN(idx, behavior_animations),                    \
+        .init_animation = DEVICE_DT_GET_OR_NULL(DT_INST_PHANDLE(idx, init_animation)),             \
+        .init_animation_duration_ms = DT_INST_PROP(idx, init_animation_duration_ms),               \
+        .init_animation_delay_ms = DT_INST_PROP(idx, init_animation_delay_ms),                     \
         .activation_animation = DEVICE_DT_GET_OR_NULL(DT_INST_PHANDLE(idx, activation_animation)), \
-        .activation_animation_duration_ms = DT_INST_PROP(idx, activation_animation_duration_ms),  \
+        .activation_animation_duration_ms = DT_INST_PROP(idx, activation_animation_duration_ms),   \
         .ext_power = DEVICE_DT_GET_OR_NULL(DT_INST_PHANDLE(idx, ext_power)),                       \
-        .brightness_steps = DT_INST_PROP(idx, brightness_steps),                                  \
-        .max_brightness = DT_INST_PROP(idx, max_brightness),                                      \
-        .overlay_msgq = &animation_control_##idx##_overlay_msgq,                                  \
-        .overlay_msgq_buffer = animation_control_##idx##_overlay_buffer,                          \
-        .overlay_msgq_capacity = DT_INST_PROP(idx, queue_size),                                   \
-    };                                                                                            \
-                                                                                                   \
-    static struct animation_control_data animation_control_##idx##_data = {                       \
-        .enabled = true,                                                                          \
-        .brightness_powered = DT_INST_PROP(idx, default_powered_brightness),                      \
-        .brightness_battery = DT_INST_PROP(idx, default_battery_brightness),                      \
-        .selected_powered = 0,                                                                    \
-        .selected_battery = 0,                                                                    \
+        .brightness_steps = DT_INST_PROP(idx, brightness_steps),                                   \
+        .max_brightness = DT_INST_PROP(idx, max_brightness),                                       \
+        .overlay_msgq = &animation_control_##idx##_overlay_msgq,                                   \
+        .overlay_msgq_buffer = animation_control_##idx##_overlay_buffer,                           \
+        .overlay_msgq_capacity = DT_INST_PROP(idx, queue_size),                                    \
     };                                                                                             \
                                                                                                    \
-    DEVICE_DT_INST_DEFINE(idx, &animation_control_init, NULL, &animation_control_##idx##_data,    \
+    static struct animation_control_data animation_control_##idx##_data = {                        \
+        .enabled = true,                                                                           \
+        .brightness_powered = DT_INST_PROP(idx, default_powered_brightness),                       \
+        .brightness_battery = DT_INST_PROP(idx, default_battery_brightness),                       \
+        .selected_powered = 0,                                                                     \
+        .selected_battery = 0,                                                                     \
+    };                                                                                             \
+                                                                                                   \
+    DEVICE_DT_INST_DEFINE(idx, &animation_control_init, NULL, &animation_control_##idx##_data,     \
                           &animation_control_##idx##_config, POST_KERNEL,                          \
                           CONFIG_APPLICATION_INIT_PRIORITY, &control_api);
 

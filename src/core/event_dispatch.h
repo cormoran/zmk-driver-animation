@@ -51,11 +51,11 @@
  * `zmk_battery_state_changed`), matching `as_##event_type()`.
  */
 #define ZMK_ANIMATION_DEFINE_LISTENER(name, devices, count, per_device_cb, event_type)             \
-    static int name##_event_listener(const zmk_event_t *event) {                                  \
-        if (as_##event_type(event) != NULL) {                                                     \
-            for (size_t _i = 0; _i < (count); ++_i) {                                             \
+    static int name##_event_listener(const zmk_event_t *event) {                                   \
+        if (as_##event_type(event) != NULL) {                                                      \
+            for (size_t _i = 0; _i < (count); ++_i) {                                              \
                 per_device_cb((devices)[_i]);                                                      \
-            }                                                                                     \
+            }                                                                                      \
         }                                                                                          \
         return ZMK_EV_EVENT_BUBBLE;                                                                \
     }                                                                                              \
@@ -71,12 +71,12 @@
  * other `ZMK_SUBSCRIPTION` call site already has.
  */
 #define ZMK_ANIMATION_DEFINE_LISTENER2(name, devices, count, per_device_cb, event_type_a,          \
-                                       event_type_b)                                                \
-    static int name##_event_listener(const zmk_event_t *event) {                                  \
+                                       event_type_b)                                               \
+    static int name##_event_listener(const zmk_event_t *event) {                                   \
         if (as_##event_type_a(event) != NULL || as_##event_type_b(event) != NULL) {                \
-            for (size_t _i = 0; _i < (count); ++_i) {                                             \
+            for (size_t _i = 0; _i < (count); ++_i) {                                              \
                 per_device_cb((devices)[_i]);                                                      \
-            }                                                                                     \
+            }                                                                                      \
         }                                                                                          \
         return ZMK_EV_EVENT_BUBBLE;                                                                \
     }                                                                                              \
@@ -92,5 +92,4 @@
  * listener needs the event payload or must handle more than one event
  * type (e.g. control.c).
  */
-#define ZMK_ANIMATION_DEFINE_LISTENER_EX(name, dispatch_fn)                                        \
-    ZMK_LISTENER(name, dispatch_fn)
+#define ZMK_ANIMATION_DEFINE_LISTENER_EX(name, dispatch_fn) ZMK_LISTENER(name, dispatch_fn)

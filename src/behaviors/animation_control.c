@@ -44,7 +44,8 @@ static int on_keymap_binding_pressed(struct zmk_behavior_binding *binding,
         zmk_animation_select(binding->param2, ZMK_ANIMATION_POWER_SOURCE_CURRENT);
         return 0;
     case ANIMATION_CONTROL_CMD_BRIGHT:
-        zmk_animation_set_brightness_shift((int)binding->param2, ZMK_ANIMATION_POWER_SOURCE_CURRENT);
+        zmk_animation_set_brightness_shift((int)binding->param2,
+                                           ZMK_ANIMATION_POWER_SOURCE_CURRENT);
         return 0;
     default:
         LOG_ERR("Unknown animctl command: %d", binding->param1);
@@ -126,8 +127,9 @@ static const struct behavior_parameter_value_metadata select_param2_values[] = {
         .range =
             {
                 .min = 0,
-                .max = MAX(DT_PROP_LEN_OR(DT_CHOSEN(zmk_animation_control), powered_animations, 1) - 1,
-                          DT_PROP_LEN_OR(DT_CHOSEN(zmk_animation_control), battery_animations, 1) - 1),
+                .max = MAX(
+                    DT_PROP_LEN_OR(DT_CHOSEN(zmk_animation_control), powered_animations, 1) - 1,
+                    DT_PROP_LEN_OR(DT_CHOSEN(zmk_animation_control), battery_animations, 1) - 1),
             },
     },
 };
@@ -143,7 +145,7 @@ static const struct behavior_parameter_metadata_set metadata_sets[] = {
     enable_metadata_set, inc_dec_metadata_set, select_metadata_set};
 #else
 static const struct behavior_parameter_metadata_set metadata_sets[] = {enable_metadata_set,
-                                                                        inc_dec_metadata_set};
+                                                                       inc_dec_metadata_set};
 #endif
 
 static const struct behavior_parameter_metadata metadata = {
@@ -162,6 +164,7 @@ static const struct behavior_driver_api behavior_animation_control_driver_api = 
 };
 
 BEHAVIOR_DT_INST_DEFINE(0, behavior_animation_control_init, NULL, NULL, NULL, POST_KERNEL,
-                        CONFIG_KERNEL_INIT_PRIORITY_DEFAULT, &behavior_animation_control_driver_api);
+                        CONFIG_KERNEL_INIT_PRIORITY_DEFAULT,
+                        &behavior_animation_control_driver_api);
 
 #endif /* DT_HAS_COMPAT_STATUS_OKAY(DT_DRV_COMPAT) */

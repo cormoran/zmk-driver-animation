@@ -23,7 +23,8 @@
 #include "layer_status.h"
 
 #define IS_CENTRAL (!IS_ENABLED(CONFIG_ZMK_SPLIT) || IS_ENABLED(CONFIG_ZMK_SPLIT_ROLE_CENTRAL))
-#define IS_SPLIT_PERIPHERAL (IS_ENABLED(CONFIG_ZMK_SPLIT) && !IS_ENABLED(CONFIG_ZMK_SPLIT_ROLE_CENTRAL))
+#define IS_SPLIT_PERIPHERAL                                                                        \
+    (IS_ENABLED(CONFIG_ZMK_SPLIT) && !IS_ENABLED(CONFIG_ZMK_SPLIT_ROLE_CENTRAL))
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
@@ -201,7 +202,8 @@ static void animation_layer_status_start(const struct device *dev, uint32_t requ
     }
 #endif
 
-    data->counter = zmk_animation_duration_to_frames(request_duration_ms, ZMK_ANIMATION_DURATION_FOREVER);
+    data->counter =
+        zmk_animation_duration_to_frames(request_duration_ms, ZMK_ANIMATION_DURATION_FOREVER);
     zmk_animation_request_frames_cap(data->counter);
 }
 
@@ -247,30 +249,30 @@ static const struct zmk_animation_api animation_layer_status_api = {
     .is_finished = animation_layer_status_is_finished,
 };
 
-#define ANIMATION_LAYER_STATUS_DEVICE(idx)                                                        \
+#define ANIMATION_LAYER_STATUS_DEVICE(idx)                                                         \
                                                                                                    \
-    static struct animation_layer_status_data animation_layer_status_##idx##_data;                \
+    static struct animation_layer_status_data animation_layer_status_##idx##_data;                 \
                                                                                                    \
-    static const size_t animation_layer_status_##idx##_pixel_map[] = DT_INST_PROP(idx, pixels);   \
+    static const size_t animation_layer_status_##idx##_pixel_map[] = DT_INST_PROP(idx, pixels);    \
                                                                                                    \
-    static const uint32_t animation_layer_status_##idx##_default_color =                          \
-        DT_INST_PROP(idx, default_color);                                                         \
-    static const uint32_t animation_layer_status_##idx##_colors[] = DT_INST_PROP(idx, colors);    \
+    static const uint32_t animation_layer_status_##idx##_default_color =                           \
+        DT_INST_PROP(idx, default_color);                                                          \
+    static const uint32_t animation_layer_status_##idx##_colors[] = DT_INST_PROP(idx, colors);     \
                                                                                                    \
-    static const struct animation_layer_status_config animation_layer_status_##idx##_config = {   \
-        .pixel_map = animation_layer_status_##idx##_pixel_map,                                    \
-        .pixel_map_size = DT_INST_PROP_LEN(idx, pixels),                                          \
-        .default_color =                                                                          \
-            (const struct zmk_color_hsl *)&animation_layer_status_##idx##_default_color,          \
-        .colors = (const struct zmk_color_hsl *)animation_layer_status_##idx##_colors,            \
-        .colors_size = DT_INST_PROP_LEN(idx, colors),                                             \
-        .layer_offset = DT_INST_PROP(idx, layer_offset),                                          \
-        .extend_duration_frames =                                                                 \
+    static const struct animation_layer_status_config animation_layer_status_##idx##_config = {    \
+        .pixel_map = animation_layer_status_##idx##_pixel_map,                                     \
+        .pixel_map_size = DT_INST_PROP_LEN(idx, pixels),                                           \
+        .default_color =                                                                           \
+            (const struct zmk_color_hsl *)&animation_layer_status_##idx##_default_color,           \
+        .colors = (const struct zmk_color_hsl *)animation_layer_status_##idx##_colors,             \
+        .colors_size = DT_INST_PROP_LEN(idx, colors),                                              \
+        .layer_offset = DT_INST_PROP(idx, layer_offset),                                           \
+        .extend_duration_frames =                                                                  \
             DT_INST_PROP(idx, extend_duration_seconds) * CONFIG_ZMK_ANIMATION_FPS,                 \
     };                                                                                             \
                                                                                                    \
-    DEVICE_DT_INST_DEFINE(idx, &animation_layer_status_init, NULL,                                \
-                          &animation_layer_status_##idx##_data,                                   \
+    DEVICE_DT_INST_DEFINE(idx, &animation_layer_status_init, NULL,                                 \
+                          &animation_layer_status_##idx##_data,                                    \
                           &animation_layer_status_##idx##_config, POST_KERNEL,                     \
                           CONFIG_APPLICATION_INIT_PRIORITY, &animation_layer_status_api);
 

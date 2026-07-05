@@ -50,8 +50,8 @@ struct animation_battery_status_data {
 };
 
 static void animation_battery_status_render_frame(const struct device *dev,
-                                                   struct zmk_animation_pixel *pixels,
-                                                   size_t num_pixels) {
+                                                  struct zmk_animation_pixel *pixels,
+                                                  size_t num_pixels) {
     ARG_UNUSED(num_pixels);
     const struct animation_battery_status_config *config = dev->config;
     struct animation_battery_status_data *data = dev->data;
@@ -67,8 +67,7 @@ static void animation_battery_status_render_frame(const struct device *dev,
 
     for (size_t i = 0; i < config->pixel_map_size; ++i) {
         uint32_t point = i * config->animation_duration_frames / config->pixel_map_size;
-        uint32_t gap =
-            point < highest_point ? highest_point - point : point - highest_point;
+        uint32_t gap = point < highest_point ? highest_point - point : point - highest_point;
         if (gap > config->animation_duration_frames / 2) {
             gap = config->animation_duration_frames - gap;
         }
@@ -143,37 +142,40 @@ static const struct zmk_animation_api animation_battery_status_api = {
     .is_finished = animation_battery_status_is_finished,
 };
 
-#define ANIMATION_BATTERY_STATUS_DEVICE(idx)                                                      \
+#define ANIMATION_BATTERY_STATUS_DEVICE(idx)                                                       \
                                                                                                    \
-    static struct animation_battery_status_data animation_battery_status_##idx##_data;            \
+    static struct animation_battery_status_data animation_battery_status_##idx##_data;             \
                                                                                                    \
-    static const size_t animation_battery_status_##idx##_pixel_map[] = DT_INST_PROP(idx, pixels); \
+    static const size_t animation_battery_status_##idx##_pixel_map[] = DT_INST_PROP(idx, pixels);  \
                                                                                                    \
-    static const uint32_t animation_battery_status_##idx##_color_high =                           \
-        DT_INST_PROP(idx, color_high);                                                            \
-    static const uint32_t animation_battery_status_##idx##_color_middle =                         \
-        DT_INST_PROP(idx, color_middle);                                                          \
-    static const uint32_t animation_battery_status_##idx##_color_low =                            \
-        DT_INST_PROP(idx, color_low);                                                             \
+    static const uint32_t animation_battery_status_##idx##_color_high =                            \
+        DT_INST_PROP(idx, color_high);                                                             \
+    static const uint32_t animation_battery_status_##idx##_color_middle =                          \
+        DT_INST_PROP(idx, color_middle);                                                           \
+    static const uint32_t animation_battery_status_##idx##_color_low =                             \
+        DT_INST_PROP(idx, color_low);                                                              \
                                                                                                    \
-    static const struct animation_battery_status_config animation_battery_status_##idx##_config = { \
-        .pixel_map = animation_battery_status_##idx##_pixel_map,                                  \
-        .pixel_map_size = DT_INST_PROP_LEN(idx, pixels),                                          \
-        .animation_duration_frames =                                                              \
-            DT_INST_PROP(idx, animation_duration_seconds) * CONFIG_ZMK_ANIMATION_FPS,             \
-        .color_high = (const struct zmk_color_hsl *)&animation_battery_status_##idx##_color_high, \
-        .color_middle =                                                                           \
-            (const struct zmk_color_hsl *)&animation_battery_status_##idx##_color_middle,         \
-        .color_low = (const struct zmk_color_hsl *)&animation_battery_status_##idx##_color_low,   \
-        .low_alert_start_threshold = DT_INST_PROP(idx, low_alert_start_threshold),                \
-        .low_alert_stop_threshold = DT_INST_PROP(idx, low_alert_stop_threshold),                  \
-        .low_alert_interval_ms = DT_INST_PROP(idx, low_alert_interval_seconds) * 1000,            \
-        .low_alert_duration_ms = DT_INST_PROP(idx, low_alert_duration_ms),                        \
+    static const struct animation_battery_status_config animation_battery_status_##idx##_config =  \
+        {                                                                                          \
+            .pixel_map = animation_battery_status_##idx##_pixel_map,                               \
+            .pixel_map_size = DT_INST_PROP_LEN(idx, pixels),                                       \
+            .animation_duration_frames =                                                           \
+                DT_INST_PROP(idx, animation_duration_seconds) * CONFIG_ZMK_ANIMATION_FPS,          \
+            .color_high =                                                                          \
+                (const struct zmk_color_hsl *)&animation_battery_status_##idx##_color_high,        \
+            .color_middle =                                                                        \
+                (const struct zmk_color_hsl *)&animation_battery_status_##idx##_color_middle,      \
+            .color_low =                                                                           \
+                (const struct zmk_color_hsl *)&animation_battery_status_##idx##_color_low,         \
+            .low_alert_start_threshold = DT_INST_PROP(idx, low_alert_start_threshold),             \
+            .low_alert_stop_threshold = DT_INST_PROP(idx, low_alert_stop_threshold),               \
+            .low_alert_interval_ms = DT_INST_PROP(idx, low_alert_interval_seconds) * 1000,         \
+            .low_alert_duration_ms = DT_INST_PROP(idx, low_alert_duration_ms),                     \
     };                                                                                             \
                                                                                                    \
-    DEVICE_DT_INST_DEFINE(idx, &animation_battery_status_init, NULL,                              \
-                          &animation_battery_status_##idx##_data,                                 \
-                          &animation_battery_status_##idx##_config, POST_KERNEL,                  \
+    DEVICE_DT_INST_DEFINE(idx, &animation_battery_status_init, NULL,                               \
+                          &animation_battery_status_##idx##_data,                                  \
+                          &animation_battery_status_##idx##_config, POST_KERNEL,                   \
                           CONFIG_APPLICATION_INIT_PRIORITY, &animation_battery_status_api);
 
 DT_INST_FOREACH_STATUS_OKAY(ANIMATION_BATTERY_STATUS_DEVICE);

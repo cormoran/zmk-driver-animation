@@ -25,7 +25,8 @@
 #include "../core/event_dispatch.h"
 
 #define IS_CENTRAL (!IS_ENABLED(CONFIG_ZMK_SPLIT) || IS_ENABLED(CONFIG_ZMK_SPLIT_ROLE_CENTRAL))
-#define IS_SPLIT_PERIPHERAL (IS_ENABLED(CONFIG_ZMK_SPLIT) && !IS_ENABLED(CONFIG_ZMK_SPLIT_ROLE_CENTRAL))
+#define IS_SPLIT_PERIPHERAL                                                                        \
+    (IS_ENABLED(CONFIG_ZMK_SPLIT) && !IS_ENABLED(CONFIG_ZMK_SPLIT_ROLE_CENTRAL))
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
@@ -188,8 +189,7 @@ static void render_peripheral(const struct device *dev, struct zmk_animation_pix
             pixel_color = color;
         } else {
             uint32_t point = i * unit;
-            uint32_t gap =
-                point < highest_point ? highest_point - point : point - highest_point;
+            uint32_t gap = point < highest_point ? highest_point - point : point - highest_point;
             float ratio = gap > unit ? 0 : (1.0f - (float)gap / unit);
             pixel_color = color;
             pixel_color.l = (uint8_t)(ratio * pixel_color.l);
@@ -225,8 +225,8 @@ static void animation_endpoint_start(const struct device *dev, uint32_t request_
     const struct animation_endpoint_config *config = dev->config;
     struct animation_endpoint_data *data = dev->data;
 
-    data->counter =
-        zmk_animation_duration_to_frames(request_duration_ms, config->duration_frames_on_endpoint_change);
+    data->counter = zmk_animation_duration_to_frames(request_duration_ms,
+                                                     config->duration_frames_on_endpoint_change);
     refresh_connection_status(dev);
     zmk_animation_request_frames_cap(data->counter);
     LOG_INF("Start animation endpoint status");
@@ -270,40 +270,41 @@ static const struct zmk_animation_api animation_endpoint_api = {
     .is_finished = animation_endpoint_is_finished,
 };
 
-#define ANIMATION_ENDPOINT_DEVICE(idx)                                                            \
+#define ANIMATION_ENDPOINT_DEVICE(idx)                                                             \
                                                                                                    \
-    static struct animation_endpoint_data animation_endpoint_##idx##_data;                        \
+    static struct animation_endpoint_data animation_endpoint_##idx##_data;                         \
                                                                                                    \
-    static const size_t animation_endpoint_##idx##_pixel_map[] = DT_INST_PROP(idx, pixels);       \
+    static const size_t animation_endpoint_##idx##_pixel_map[] = DT_INST_PROP(idx, pixels);        \
                                                                                                    \
-    static const uint32_t animation_endpoint_##idx##_color_open = DT_INST_PROP(idx, color_open);  \
+    static const uint32_t animation_endpoint_##idx##_color_open = DT_INST_PROP(idx, color_open);   \
     static const uint32_t animation_endpoint_##idx##_color_disconnected =                          \
-        DT_INST_PROP(idx, color_disconnected);                                                    \
+        DT_INST_PROP(idx, color_disconnected);                                                     \
     static const uint32_t animation_endpoint_##idx##_color_connected =                             \
         DT_INST_PROP(idx, color_connected);                                                        \
-    static const uint32_t animation_endpoint_##idx##_color_usb = DT_INST_PROP(idx, color_usb);    \
+    static const uint32_t animation_endpoint_##idx##_color_usb = DT_INST_PROP(idx, color_usb);     \
                                                                                                    \
-    static const struct animation_endpoint_config animation_endpoint_##idx##_config = {           \
-        .pixel_map = animation_endpoint_##idx##_pixel_map,                                        \
-        .pixel_map_size = DT_INST_PROP_LEN(idx, pixels),                                          \
-        .duration_frames_on_endpoint_change =                                                     \
+    static const struct animation_endpoint_config animation_endpoint_##idx##_config = {            \
+        .pixel_map = animation_endpoint_##idx##_pixel_map,                                         \
+        .pixel_map_size = DT_INST_PROP_LEN(idx, pixels),                                           \
+        .duration_frames_on_endpoint_change =                                                      \
             DT_INST_PROP(idx, duration_seconds_on_endpoint_change) * CONFIG_ZMK_ANIMATION_FPS,     \
-        .not_connected_duration_frames =                                                          \
+        .not_connected_duration_frames =                                                           \
             DT_INST_PROP(idx, not_connected_duration_seconds) * CONFIG_ZMK_ANIMATION_FPS,          \
-        .blink_duration_frames =                                                                  \
+        .blink_duration_frames =                                                                   \
             DT_INST_PROP(idx, blink_duration_seconds) * CONFIG_ZMK_ANIMATION_FPS,                  \
-        .extend_duration_frames =                                                                 \
+        .extend_duration_frames =                                                                  \
             DT_INST_PROP(idx, extend_duration_seconds) * CONFIG_ZMK_ANIMATION_FPS,                 \
         .event_handling_start_ms = DT_INST_PROP(idx, event_handling_start_seconds) * 1000,         \
         .color_open = (const struct zmk_color_hsl *)&animation_endpoint_##idx##_color_open,        \
-        .color_disconnected =                                                                     \
+        .color_disconnected =                                                                      \
             (const struct zmk_color_hsl *)&animation_endpoint_##idx##_color_disconnected,          \
-        .color_connected = (const struct zmk_color_hsl *)&animation_endpoint_##idx##_color_connected, \
+        .color_connected =                                                                         \
+            (const struct zmk_color_hsl *)&animation_endpoint_##idx##_color_connected,             \
         .color_usb = (const struct zmk_color_hsl *)&animation_endpoint_##idx##_color_usb,          \
     };                                                                                             \
                                                                                                    \
     DEVICE_DT_INST_DEFINE(idx, &animation_endpoint_init, NULL, &animation_endpoint_##idx##_data,   \
-                          &animation_endpoint_##idx##_config, POST_KERNEL,                          \
+                          &animation_endpoint_##idx##_config, POST_KERNEL,                         \
                           CONFIG_APPLICATION_INIT_PRIORITY, &animation_endpoint_api);
 
 DT_INST_FOREACH_STATUS_OKAY(ANIMATION_ENDPOINT_DEVICE);

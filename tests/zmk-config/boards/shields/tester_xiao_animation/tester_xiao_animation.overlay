@@ -1,17 +1,10 @@
 #include <dt-bindings/led/led.h>
 #include <zmk_driver_animation/animation.dtsi>
+#include <zmk_driver_animation/animation_layer_status.dtsi>
+#include <behaviors/animation_control.dtsi>
+#include <behaviors/animation_trigger.dtsi>
+#include <dt-bindings/zmk_driver_animation/animation_control.h>
 #include <dt-bindings/zmk/matrix_transform.h>
-
-/*
- * HSL(h, s, l) packs an HSL color into the uint32_t representation
- * `struct zmk_color_hsl` expects. Phase A has no behaviors/control layer
- * yet (that's where v1 kept this macro), so it is defined locally here.
- */
-#ifdef CONFIG_BIG_ENDIAN
-#define HSL(h, s, l) ((h << 16) + (s << 8) + l)
-#else
-#define HSL(h, s, l) (h + (s << 16) + (l << 24))
-#endif
 
 &xiao_spi {
     status = "okay";
@@ -23,7 +16,7 @@
         compatible = "worldsemi,ws2812-spi";
         reg = <0>;
         spi-max-frequency = <4000000>;
-        chain-length = <1>;
+        chain-length = <3>;
         spi-one-frame = <0x70>;
         spi-zero-frame = <0x40>;
         color-mapping = <LED_COLOR_ID_GREEN
@@ -36,7 +29,12 @@
     chosen {
         zmk,kscan = &kscan0;
         zmk,matrix-transform = &transform0;
-        zmk,animation = &animation_solid0;
+        /* Phase B onward: `zmk,animation` must resolve to the
+         * animation-control singleton (DESIGN.md #4 item 10), and
+         * `zmk,animation-control` is used internally by animations that
+         * enqueue an ad-hoc overlay (battery-status's low-battery alert). */
+        zmk,animation = &animation_control0;
+        zmk,animation-control = &animation_control0;
     };
 
     kscan0: kscan {
@@ -54,13 +52,36 @@
     animation: animation {
         compatible = "zmk,animation";
         drivers = <&led_strip>;
-        chain-lengths = <1>;
-        pixels = <&pixel 0 0>;
+        chain-lengths = <3>;
+        pixels = <&pixel 0 0>, <&pixel 1 0>, <&pixel 2 0>;
     };
 
     animation_solid0: animation_solid_0 {
         compatible = "zmk,animation-solid";
-        pixels = <0>;
+        pixels = <0 1 2>;
         colors = <HSL(120, 100, 50)>;
     };
+
+    animation_solid1: animation_solid_1 {
+        compatible = "zmk,animation-solid";
+        pixels = <0 1 2>;
+        duration = <5>;
+        colors = <HSL(0, 100, 50) HSL(240, 100, 50)>;
+    };
+
+    animation_control0: animation_control_0 {
+        compatible = "zmk,animation-control";
+        /* At least 2 real animation types selectable per power source,
+         * matching what a real keyboard would configure. */
+        powered-animations = <&animation_solid0 &animation_solid1 &animation_layer_status>;
+        battery-animations = <&animation_solid0 &animation_solid1 &animation_layer_status>;
+        behavior-animations = <&animation_solid1>;
+        init-animation = <&animation_solid1>;
+        init-animation-duration-ms = <1000>;
+    };
+};
+
+&animation_layer_status {
+    pixels = <0 1 2>;
+    colors = <HSL(0, 100, 50) HSL(120, 100, 50) HSL(240, 100, 50)>;
 };
