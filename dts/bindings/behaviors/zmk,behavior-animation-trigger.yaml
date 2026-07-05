@@ -1,0 +1,8 @@
+# Copyright (c) 2025 cormoran
+# SPDX-License-Identifier: MIT
+
+description: Behavior to trigger a behavior-animations overlay by index
+
+compatible: "zmk,behavior-animation-trigger"
+
+include: two_param.yaml

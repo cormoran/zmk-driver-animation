@@ -1,0 +1,82 @@
+#include "../test.dtsi"
+#include <dt-bindings/zmk/keys.h>
+#include <dt-bindings/zmk/kscan_mock.h>
+#include <zmk_driver_animation/animation.dtsi>
+#include <behaviors/animation_control.dtsi>
+#include <dt-bindings/zmk_driver_animation/animation_control.h>
+
+/*
+ * Port + extension of v1's tests/test (DESIGN.md #5: "v1's only real
+ * behavioral test" - enable/shift/select/brightness via animctl). Exercises
+ * control.c's public API end-to-end through the real behavior, the same
+ * way a keymap author would.
+ */
+
+/ {
+    mock_led_strip0: mock_led_strip_0 {
+        compatible = "zmk,mock-led-strip";
+        chain-length = <2>;
+    };
+
+    animation: animation {
+        compatible = "zmk,animation";
+        drivers = <&mock_led_strip0>;
+        chain-lengths = <2>;
+        pixels = <&pixel 0 0>, <&pixel 1 0>;
+    };
+
+    animation_solid0: animation_solid_0 {
+        compatible = "zmk,animation-solid";
+        pixels = <0 1>;
+        colors = <HSL(0, 100, 50)>;
+    };
+
+    animation_solid1: animation_solid_1 {
+        compatible = "zmk,animation-solid";
+        pixels = <0 1>;
+        colors = <HSL(120, 100, 50)>;
+    };
+
+    animation_control0: animation_control_0 {
+        compatible = "zmk,animation-control";
+        powered-animations = <&animation_solid0 &animation_solid1>;
+        battery-animations = <&animation_solid0 &animation_solid1>;
+        behavior-animations = <&animation_solid0>;
+        brightness-steps = <5>;
+        default-powered-brightness = <2>;
+        default-battery-brightness = <2>;
+    };
+
+    chosen {
+        zmk,animation = &animation_control0;
+        zmk,animation-control = &animation_control0;
+    };
+};
+
+&kscan {
+    events = <
+    ZMK_MOCK_PRESS(0,0,50)
+    ZMK_MOCK_RELEASE(0,0,50)
+    ZMK_MOCK_PRESS(0,1,50)
+    ZMK_MOCK_RELEASE(0,1,50)
+    ZMK_MOCK_PRESS(1,0,50)
+    ZMK_MOCK_RELEASE(1,0,50)
+    ZMK_MOCK_PRESS(1,1,50)
+    ZMK_MOCK_RELEASE(1,1,50)
+    >;
+};
+
+/ {
+    keymap {
+        compatible = "zmk,keymap";
+
+        default_layer {
+            bindings = <
+            &animctl ANIMATION_CONTROL_CMD_SHIFT 1
+            &animctl ANIMATION_CONTROL_CMD_SELECT 0
+            &animctl ANIMATION_CONTROL_CMD_BRIGHT 1
+            &animctl ANIMATION_CONTROL_CMD_ENABLE 0
+            >;
+        };
+    };
+};

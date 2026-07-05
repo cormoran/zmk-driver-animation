@@ -1,0 +1,89 @@
+#include "../test.dtsi"
+#include <dt-bindings/zmk/keys.h>
+#include <dt-bindings/zmk/kscan_mock.h>
+#include <zmk_driver_animation/animation.dtsi>
+#include <behaviors/animation_control.dtsi>
+#include <dt-bindings/zmk_driver_animation/animation_control.h>
+
+/*
+ * Smoke test for zmk,animation-compose (parallel + sequential). native_sim
+ * has no USB stack, so power_policy.c always reports "unpowered" and
+ * battery-animations is the active list; both compose variants are placed
+ * there and animctl SELECT switches between them so each is actually
+ * rendered (not just compiled).
+ */
+
+/ {
+    mock_led_strip0: mock_led_strip_0 {
+        compatible = "zmk,mock-led-strip";
+        chain-length = <2>;
+    };
+
+    animation: animation {
+        compatible = "zmk,animation";
+        drivers = <&mock_led_strip0>;
+        chain-lengths = <2>;
+        pixels = <&pixel 0 0>, <&pixel 1 0>;
+    };
+
+    animation_child_a: animation_child_a {
+        compatible = "zmk,animation-solid";
+        pixels = <0>;
+        colors = <HSL(0, 100, 50)>;
+        duration = <1>;
+    };
+
+    animation_child_b: animation_child_b {
+        compatible = "zmk,animation-solid";
+        pixels = <1>;
+        colors = <HSL(120, 100, 50)>;
+        duration = <1>;
+    };
+
+    animation_compose_parallel: animation_compose_parallel {
+        compatible = "zmk,animation-compose";
+        animations = <&animation_child_a &animation_child_b>;
+        durations-ms = <2000 2000>;
+        parallel;
+    };
+
+    animation_compose_sequential: animation_compose_sequential {
+        compatible = "zmk,animation-compose";
+        animations = <&animation_child_a &animation_child_b>;
+        durations-ms = <100 100>;
+    };
+
+    animation_control0: animation_control_0 {
+        compatible = "zmk,animation-control";
+        powered-animations = <&animation_compose_parallel>;
+        battery-animations = <&animation_compose_sequential &animation_compose_parallel>;
+        behavior-animations = <&animation_compose_parallel>;
+    };
+
+    chosen {
+        zmk,animation = &animation_control0;
+        zmk,animation-control = &animation_control0;
+    };
+
+    keymap {
+        compatible = "zmk,keymap";
+
+        default_layer {
+            bindings = <
+            &kp A
+            &animctl ANIMATION_CONTROL_CMD_SHIFT 1
+            >;
+        };
+    };
+};
+
+&kscan {
+    events = <
+    ZMK_MOCK_PRESS(0,0,300)
+    ZMK_MOCK_RELEASE(0,0,300)
+    ZMK_MOCK_PRESS(0,1,50)
+    ZMK_MOCK_RELEASE(0,1,50)
+    ZMK_MOCK_PRESS(0,0,300)
+    ZMK_MOCK_RELEASE(0,0,300)
+    >;
+};

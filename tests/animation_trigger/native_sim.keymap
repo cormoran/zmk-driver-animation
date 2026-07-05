@@ -1,0 +1,103 @@
+#include "../test.dtsi"
+#include <dt-bindings/zmk/keys.h>
+#include <dt-bindings/zmk/kscan_mock.h>
+#include <zmk_driver_animation/animation.dtsi>
+#include <behaviors/animation_trigger.dtsi>
+#include <dt-bindings/zmk_driver_animation/animation_control.h>
+#include <dt-bindings/zmk_driver_animation/animation_trigger.h>
+
+/*
+ * animtrig press/hold/release semantics + hold-extension (DESIGN.md #3.7):
+ * key position 0 is pressed and released quickly (plays for
+ * TRIGGER_MIN_DURATION_MS then stops via animation_stop_work); key
+ * position 1 is held across the min-duration boundary so
+ * animation_stop_work's "still pressed -> extend" branch fires at least
+ * once before release finally lets it stop.
+ *
+ * ZMK_MOCK_PRESS/RELEASE's msec is the delay before the *next* events-list
+ * entry fires, read/rescheduled at the moment the current entry's own
+ * callback runs (see tests/overlay_queue's native_sim.keymap comment and
+ * dependencies/zmk/app/module/drivers/kscan/kscan_mock.c) - i.e. entry[i]'s
+ * msec controls when entry[i+1] fires, not entry[i] itself.
+ */
+
+/ {
+    mock_led_strip0: mock_led_strip_0 {
+        compatible = "zmk,mock-led-strip";
+        chain-length = <1>;
+    };
+
+    animation: animation {
+        compatible = "zmk,animation";
+        drivers = <&mock_led_strip0>;
+        chain-lengths = <1>;
+        pixels = <&pixel 0 0>;
+    };
+
+    animation_base: animation_base {
+        compatible = "zmk,animation-solid";
+        pixels = <0>;
+        colors = <HSL(0, 100, 50)>;
+    };
+
+    animation_overlay: animation_overlay {
+        compatible = "zmk,animation-solid";
+        pixels = <0>;
+        colors = <HSL(240, 100, 50)>;
+    };
+
+    animation_control0: animation_control_0 {
+        compatible = "zmk,animation-control";
+        powered-animations = <&animation_base>;
+        battery-animations = <&animation_base>;
+        behavior-animations = <&animation_overlay>;
+    };
+
+    chosen {
+        zmk,animation = &animation_control0;
+        zmk,animation-control = &animation_control0;
+    };
+
+    keymap {
+        compatible = "zmk,keymap";
+
+        default_layer {
+            bindings = <
+            &animtrig ANM_TRG 0
+            &animtrig ANM_TRG 0
+            &trans
+            &trans
+            >;
+        };
+    };
+};
+
+/*
+ * Absolute timeline (min-duration=200ms, extend-on-hold=200ms per
+ * native_sim.conf):
+ *   t~50ms   press position 0: starts the trigger overlay.
+ *   t~100ms  release position 0 almost immediately - num_pressed drops to
+ *            0 well before the ~200ms min-duration elapses, so
+ *            animation_stop_work's first firing (at ~250ms) sees
+ *            num_pressed==0 and stops it outright (no extension).
+ *   t~350ms  press position 1: starts a second trigger overlay.
+ *   t~600ms  release position 1 - by now animation_stop_work has already
+ *            fired once (at ~550ms) while position 1 was still held,
+ *            taking the "num_pressed > 0 -> extend" branch, so this
+ *            release is followed by a *second* stop_work firing that
+ *            finally stops it.
+ */
+&kscan {
+    events = <
+    ZMK_MOCK_PRESS(0,0,50)
+    ZMK_MOCK_RELEASE(0,0,300)
+    ZMK_MOCK_PRESS(0,1,250)
+    ZMK_MOCK_RELEASE(0,1,50)
+    /* Trailing no-op on an unbound position (2, &trans) purely to keep
+     * native_sim alive long enough (board's exit-after fires the instant
+     * the events list is exhausted) to observe the final stop_work firing
+     * after the position-1 release above, without logging a spurious
+     * second "released" for position 0/1. */
+    ZMK_MOCK_RELEASE(1,0,300)
+    >;
+};

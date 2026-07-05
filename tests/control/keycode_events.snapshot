@@ -1,0 +1,5 @@
+zmk: ZMK animation control ready (2 powered, 2 battery, 1 behavior animations)
+shift index 0->1
+select index 1->0
+change brightness 2->3
+set enabled 0

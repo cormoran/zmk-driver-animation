@@ -1,0 +1,11 @@
+# Copyright (c) 2025 cormoran
+# SPDX-License-Identifier: MIT
+
+description: |
+  Peripheral-side receiver for the central->peripheral layer-status relay
+  (DESIGN.md #3.7/#3.8 - a quarantined transport hack, not a general-purpose
+  behavior).
+
+compatible: "zmk,behavior-animation-layer-status"
+
+include: two_param.yaml

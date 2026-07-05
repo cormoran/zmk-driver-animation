@@ -1,0 +1,4 @@
+enqueued animation_init_overlay
+play_now animation_trigger_overlay deferred (current overlay not cancelable)
+enqueued animation_trigger_overlay
+play_now animation_trigger_overlay2 (preempted (none))

@@ -17,6 +17,27 @@ config ZMK_ANIMATION_STUDIO_RPC
     bool "Enable animation feature custom Studio RPC"
     depends on ZMK_STUDIO
 
+config ZMK_ANIMATION_TRIGGER_MAX_PARALLELISM
+    int "Maximum number of simultaneously-triggered behavior-animations slots"
+    default 10
+    help
+      v1 spelled this option "...PARALELISM" (typo). Renamed for Phase B;
+      see README migration notes if porting a v1 keymap fragment that sets
+      this directly (most users only reference the behavior, not this
+      Kconfig symbol).
+
+config ZMK_ANIMATION_TRIGGER_MAX_DURATION_MS
+    int "Maximum animation play duration for animation trigger"
+    default 10000
+
+config ZMK_ANIMATION_TRIGGER_MIN_DURATION_MS
+    int "Minimum animation play duration for animation trigger"
+    default 1000
+
+config ZMK_ANIMATION_TRIGGER_EXTEND_MS_ON_HOLD
+    int "Animation play duration extension on hold"
+    default 500
+
 endif
 
 config ZMK_ANIMATION_MOCK_LED_STRIP

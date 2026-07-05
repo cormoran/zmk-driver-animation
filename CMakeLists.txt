@@ -12,6 +12,9 @@ if(CONFIG_ZMK_ANIMATION)
     target_sources(app PRIVATE src/control/control.c)
     target_sources(app PRIVATE src/control/overlay_queue.c)
     target_sources(app PRIVATE src/control/power_policy.c)
+    target_sources(app PRIVATE src/behaviors/animation_control.c)
+    target_sources(app PRIVATE src/behaviors/animation_trigger.c)
+    target_sources(app PRIVATE src/behaviors/animation_layer_status.c)
 
     if(CONFIG_ZMK_BLE)
         # endpoint.c includes <zephyr/bluetooth/*.h> unconditionally (as v1

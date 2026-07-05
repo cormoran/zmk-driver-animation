@@ -1,0 +1,123 @@
+#include "../test.dtsi"
+#include <dt-bindings/zmk/keys.h>
+#include <dt-bindings/zmk/kscan_mock.h>
+#include <zmk_driver_animation/animation.dtsi>
+#include <behaviors/animation_trigger.dtsi>
+#include <dt-bindings/zmk_driver_animation/animation_control.h>
+#include <dt-bindings/zmk_driver_animation/animation_trigger.h>
+
+/*
+ * Exercises overlay_queue.c's three distinct code paths (DESIGN.md: "write
+ * a unit test that specifically exercises both enqueue and play_now
+ * distinctly" - the class of bug v1 had, DESIGN.md #4 item 2):
+ *
+ *  1. `init-animation` is enqueued (not cancelable) shortly after boot -
+ *     "overlay queue: enqueued animation_init_overlay".
+ *  2. Pressing animtrig (index 0) while the init overlay is still playing
+ *     hits play_now()'s "not cancelable" fallback path - "play_now ...
+ *     deferred (current overlay not cancelable)".
+ *  3. Pressing animtrig (index 1, a *different* behavior-animations slot,
+ *     so animtrig's own per-index bookkeeping doesn't collide with #2's
+ *     still-active slot) once nothing is playing hits play_now()'s
+ *     preemption path - "play_now ... (preempted (none))".
+ *
+ * ZMK_MOCK_PRESS/RELEASE's msec parameter is the delay before the *next*
+ * list entry fires, and is read (and used to reschedule) at the moment
+ * the current entry's own callback runs - not a delay from when the
+ * current entry itself was scheduled, and not a hold duration (see
+ * dependencies/zmk/app/module/drivers/kscan/kscan_mock.c
+ * kscan_mock_work_handler / kscan_mock_schedule_next_event). In other
+ * words entry[i]'s msec value controls when entry[i+1] fires. The events
+ * list below is annotated with the resulting absolute timeline.
+ */
+
+/ {
+    mock_led_strip0: mock_led_strip_0 {
+        compatible = "zmk,mock-led-strip";
+        chain-length = <1>;
+    };
+
+    animation: animation {
+        compatible = "zmk,animation";
+        drivers = <&mock_led_strip0>;
+        chain-lengths = <1>;
+        pixels = <&pixel 0 0>;
+    };
+
+    animation_base: animation_base {
+        compatible = "zmk,animation-solid";
+        pixels = <0>;
+        colors = <HSL(0, 100, 50)>;
+    };
+
+    animation_init_overlay: animation_init_overlay {
+        compatible = "zmk,animation-solid";
+        pixels = <0>;
+        colors = <HSL(120, 100, 50)>;
+    };
+
+    animation_trigger_overlay: animation_trigger_overlay {
+        compatible = "zmk,animation-solid";
+        pixels = <0>;
+        colors = <HSL(240, 100, 50)>;
+    };
+
+    animation_trigger_overlay2: animation_trigger_overlay2 {
+        compatible = "zmk,animation-solid";
+        pixels = <0>;
+        colors = <HSL(300, 100, 50)>;
+    };
+
+    animation_control0: animation_control_0 {
+        compatible = "zmk,animation-control";
+        powered-animations = <&animation_base>;
+        battery-animations = <&animation_base>;
+        behavior-animations = <&animation_trigger_overlay &animation_trigger_overlay2>;
+        init-animation = <&animation_init_overlay>;
+        init-animation-duration-ms = <200>;
+        init-animation-delay-ms = <10>;
+    };
+
+    chosen {
+        zmk,animation = &animation_control0;
+        zmk,animation-control = &animation_control0;
+    };
+
+    keymap {
+        compatible = "zmk,keymap";
+
+        default_layer {
+            bindings = <
+            &animtrig ANM_TRG 0
+            &animtrig ANM_TRG 1
+            &trans
+            &trans
+            >;
+        };
+    };
+};
+
+/*
+ * Absolute timeline (init-animation: delay=10ms, duration=200ms -> starts
+ * ~10ms, finishes ~300ms per the engine's 100ms/tick granularity at
+ * FPS=10; animtrig: min-duration=100ms, so a tap's overlay self-stops
+ * ~100ms after press if released, extended while held):
+ *   t~100ms  press position 0 (animtrig 0): init overlay still playing
+ *            -> play_now() falls back to enqueue (not cancelable).
+ *   t~1000ms release position 0 (long hold - the 900ms delay on this
+ *            entry is what pushes the *next* press out past the init
+ *            overlay's ~300ms finish, see comment above the events list).
+ *   t~1050ms press position 1 (animtrig 1, a different behavior-animations
+ *            slot): by now both the init overlay and the deferred trigger
+ *            overlay from press 1 have long finished -> play_now()
+ *            preempts "(none)".
+ *   t~1100ms release position 1.
+ */
+&kscan {
+    events = <
+    ZMK_MOCK_PRESS(0,0,100)
+    ZMK_MOCK_RELEASE(0,0,900)
+    ZMK_MOCK_PRESS(0,1,50)
+    ZMK_MOCK_RELEASE(0,1,50)
+    >;
+};
