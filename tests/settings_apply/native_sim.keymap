@@ -1,0 +1,84 @@
+#include "../test.dtsi"
+#include <dt-bindings/zmk/keys.h>
+#include <dt-bindings/zmk/kscan_mock.h>
+#include <zmk_driver_animation/animation.dtsi>
+#include <dt-bindings/zmk_driver_animation/animation_control.h>
+
+/*
+ * Phase C boot-apply test (DESIGN.md #3.5, #6 exit criteria: "settings tests
+ * incl. persist across simulated reboot"). CONFIG_ZMK_ANIMATION_SETTINGS_TEST
+ * (src/test/animation_settings_test.c) seeds a persisted, non-default
+ * "brightness_powered" value (4) into a fake settings backend before ZMK's
+ * main() calls settings_load(); this test asserts that
+ * animation-control's init-animation-delay-ms delayed work (the same one
+ * that enqueues the init animation) has applied that persisted value by the
+ * time it logs, instead of this node's own default-powered-brightness (2).
+ *
+ * init-animation-delay-ms is kept short (10ms) so the test doesn't need to
+ * wait for the (default 100ms) production delay.
+ */
+
+/ {
+    mock_led_strip0: mock_led_strip_0 {
+        compatible = "zmk,mock-led-strip";
+        chain-length = <2>;
+    };
+
+    animation: animation {
+        compatible = "zmk,animation";
+        drivers = <&mock_led_strip0>;
+        chain-lengths = <2>;
+        pixels = <&pixel 0 0>, <&pixel 1 0>;
+    };
+
+    animation_solid0: animation_solid_0 {
+        compatible = "zmk,animation-solid";
+        pixels = <0 1>;
+        colors = <HSL(0, 100, 50)>;
+    };
+
+    animation_solid1: animation_solid_1 {
+        compatible = "zmk,animation-solid";
+        pixels = <0 1>;
+        colors = <HSL(120, 100, 50)>;
+    };
+
+    animation_control0: animation_control_0 {
+        compatible = "zmk,animation-control";
+        powered-animations = <&animation_solid0 &animation_solid1>;
+        battery-animations = <&animation_solid0 &animation_solid1>;
+        behavior-animations = <&animation_solid0>;
+        brightness-steps = <5>;
+        default-powered-brightness = <2>;
+        default-battery-brightness = <2>;
+        init-animation = <&animation_solid0>;
+        init-animation-delay-ms = <10>;
+    };
+
+    chosen {
+        zmk,animation = &animation_control0;
+        zmk,animation-control = &animation_control0;
+    };
+};
+
+&kscan {
+    events = <
+    ZMK_MOCK_PRESS(0,0,50)
+    ZMK_MOCK_RELEASE(0,0,50)
+    >;
+};
+
+/ {
+    keymap {
+        compatible = "zmk,keymap";
+
+        default_layer {
+            bindings = <
+            &kp A
+            &kp B
+            &kp C
+            &kp D
+            >;
+        };
+    };
+};

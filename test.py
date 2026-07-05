@@ -105,6 +105,7 @@ class WestCommandsTests(unittest.TestCase):
                         "CONFIG_SHIELD_TESTER_XIAO_ANIMATION=y",
                         "CONFIG_ZMK_ANIMATION=y",
                         "CONFIG_WS2812_STRIP_SPI=y",
+                        NotFound("CONFIG_ZMK_ANIMATION_CUSTOM_SETTINGS"),
                     ],
                     device=[
                         "DT_COMPAT_HAS_OKAY_zmk_animation",
@@ -113,6 +114,21 @@ class WestCommandsTests(unittest.TestCase):
                         "DT_COMPAT_HAS_OKAY_zmk_animation_layer_status",
                         "DT_COMPAT_HAS_OKAY_zmk_behavior_animation_control",
                         "DT_COMPAT_HAS_OKAY_worldsemi_ws2812_spi",
+                    ],
+                ),
+                "animation_tester_xiao_shield_with_custom_settings": ConfigAndDeviceTree(
+                    config=[
+                        "CONFIG_SHIELD_TESTER_XIAO_ANIMATION=y",
+                        "CONFIG_ZMK_ANIMATION=y",
+                        "CONFIG_SETTINGS=y",
+                        # Verify that zmk-feature-custom-settings is present and enabled
+                        "zmk-feature-custom-settings",
+                        "CONFIG_ZMK_CUSTOM_SETTINGS=y",
+                        "CONFIG_ZMK_ANIMATION_CUSTOM_SETTINGS=y",
+                    ],
+                    device=[
+                        "DT_COMPAT_HAS_OKAY_zmk_animation",
+                        "DT_COMPAT_HAS_OKAY_zmk_animation_control",
                     ],
                 ),
             }

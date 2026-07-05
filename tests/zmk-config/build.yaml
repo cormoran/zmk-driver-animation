@@ -23,3 +23,8 @@ include:
   - artifact: animation_tester_xiao_shield
     board: xiao_ble//zmk
     shield: tester_xiao_animation
+
+  - artifact: animation_tester_xiao_shield_with_custom_settings
+    board: xiao_ble//zmk
+    shield: tester_xiao_animation
+    cmake-args: -DCONFIG_SETTINGS=y -DCONFIG_ZMK_CUSTOM_SETTINGS=y -DCONFIG_ZMK_ANIMATION_CUSTOM_SETTINGS=y
