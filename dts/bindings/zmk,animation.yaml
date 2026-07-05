@@ -3,9 +3,11 @@
 
 description: |
   Global animation engine configuration. Exactly one enabled instance is
-  supported; the engine also requires `zmk,animation` chosen to point at
-  this node (Phase A: directly; from Phase B on, at the `animation-control`
-  node instead, per DESIGN.md).
+  supported. The engine reads the `zmk,animation` chosen node only for
+  activity-gating (start/stop/is_finished); from Phase B onward that chosen
+  node must resolve to the `zmk,animation-control` singleton, not a bare
+  animation node (DESIGN.md #4 item 10) - control.c is what actually decides
+  which animation gets rendered each tick.
 
 compatible: "zmk,animation"
 

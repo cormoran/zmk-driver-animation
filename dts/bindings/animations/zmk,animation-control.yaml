@@ -1,0 +1,107 @@
+# Copyright (c) 2020, The ZMK Contributors
+# Copyright (c) 2026, cormoran
+# SPDX-License-Identifier: MIT
+
+description: |
+  Control singleton: enable/disable, brightness, and per-power-source
+  animation selection, plus the ad-hoc overlay queue (DESIGN.md #3.3/#3.4).
+
+  Exactly one enabled instance is supported (BUILD_ASSERT in control.c, like
+  engine.c's). It must be referenced by the `zmk,animation` chosen node (the
+  engine renders whichever device that resolves to - v1's README/behavior
+  mismatch where `zmk,animation` sometimes pointed at a bare animation node
+  instead of animation-control, DESIGN.md #4 item 10). A second chosen
+  property, `zmk,animation-control`, is used internally by animations that
+  need to enqueue an ad-hoc overlay (battery-status's low-battery alert,
+  etc.) and must point at the same node.
+
+compatible: "zmk,animation-control"
+
+properties:
+  powered-animations:
+    type: phandles
+    required: true
+    description: |
+      Base animations selectable while USB-bus-powered.
+
+  battery-animations:
+    type: phandles
+    required: true
+    description: |
+      Base animations selectable while battery-powered.
+
+  behavior-animations:
+    type: phandles
+    required: true
+    description: |
+      Animations playable as an ad-hoc overlay via animtrig/animctl/RPC
+      trigger, referenced by index into this list.
+
+  init-animation:
+    type: phandle
+    description: |
+      Animation played as an ad-hoc overlay shortly after boot.
+
+  init-animation-duration-ms:
+    type: int
+    default: 0
+    description: |
+      Duration of the init animation in milliseconds. 0 plays it until it
+      finishes.
+
+  init-animation-delay-ms:
+    type: int
+    default: 100
+    description: |
+      Delay after startup before the init animation is enqueued. Also the
+      point at which persisted settings are applied in Phase C - see
+      DESIGN.md #3.5.
+
+  activation-animation:
+    type: phandle
+    description: |
+      Animation played as an ad-hoc overlay when resuming from idle/sleep.
+
+  activation-animation-duration-ms:
+    type: int
+    default: 0
+    description: |
+      Duration of the activation animation in milliseconds. 0 plays it
+      until it finishes.
+
+  ext-power:
+    type: phandle
+    description: |
+      Power switch for the LED strip. Disabled while no animation is
+      selected or the engine is stopped (idle/sleep); enabled while
+      something is playing.
+
+  brightness-steps:
+    type: int
+    default: 10
+    description: |
+      Number of brightness steps supported (0..brightness-steps inclusive).
+
+  max-brightness:
+    type: int
+    default: 128
+    description: |
+      Maximum per-channel RGB value (0..255) at the top brightness step.
+
+  default-powered-brightness:
+    type: int
+    default: 1
+    description: |
+      Default brightness step while USB-bus-powered.
+
+  default-battery-brightness:
+    type: int
+    default: 1
+    description: |
+      Default brightness step while battery-powered.
+
+  queue-size:
+    type: int
+    default: 16
+    description: |
+      Capacity of the ad-hoc overlay queue.

@@ -58,11 +58,13 @@ static const size_t pixels_size = DT_INST_PROP_LEN(0, pixels);
 static struct led_rgb px_buffer[DT_INST_PROP_LEN(0, pixels)];
 
 /*
- * The `zmk,animation` chosen node. Per DESIGN.md #4 item 10, from Phase B
- * onward this must resolve to `animation-control`, not an arbitrary
- * animation node; the engine only knows how to render *some* animation
- * device. Phase A has no control layer yet, so the chosen node is rendered
- * directly.
+ * The `zmk,animation` chosen node. Per DESIGN.md #4 item 10, this must
+ * resolve to the `zmk,animation-control` singleton, not an arbitrary
+ * animation node - the engine only knows how to start/stop/is_finished
+ * *some* `zmk_animation_api` device for activity gating (see
+ * engine_on_activity_state_changed() below); actual per-tick rendering goes
+ * through render.c, which queries control.c directly (control_internal.h)
+ * rather than through this pointer.
  */
 static const struct device *root_animation = DEVICE_DT_GET(DT_CHOSEN(zmk_animation));
 
@@ -98,7 +100,7 @@ static uint32_t frame_budget;
 static struct k_spinlock frame_budget_lock;
 
 static void engine_tick(struct k_work *work) {
-    zmk_animation_render(root_animation, pixels, pixels_size);
+    zmk_animation_render(pixels, pixels_size);
 
     for (size_t i = 0; i < pixels_size; ++i) {
         zmk_rgb_to_led_rgb(&pixels[i].value, &px_buffer[i]);

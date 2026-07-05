@@ -36,8 +36,29 @@
         colors = <HSL(0, 100, 50) HSL(120, 100, 50) HSL(240, 100, 50)>;
     };
 
+    /*
+     * Phase B onward: `zmk,animation` chosen must resolve to the
+     * animation-control singleton, not a bare animation node (DESIGN.md #4
+     * item 10) - the engine's activity-gating start/stop/is_finished calls
+     * and render.c's control_internal.h queries both expect this.
+     */
+    /* Full brightness so this test keeps asserting on solid.c's raw
+     * HSL->RGB output, not control.c's brightness scaling (that has its
+     * own coverage in tests/control). */
+    animation_control0: animation_control_0 {
+        compatible = "zmk,animation-control";
+        powered-animations = <&animation_solid0>;
+        battery-animations = <&animation_solid0>;
+        behavior-animations = <&animation_solid0>;
+        brightness-steps = <1>;
+        max-brightness = <255>;
+        default-powered-brightness = <1>;
+        default-battery-brightness = <1>;
+    };
+
     chosen {
-        zmk,animation = &animation_solid0;
+        zmk,animation = &animation_control0;
+        zmk,animation-control = &animation_control0;
     };
 };
 

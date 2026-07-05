@@ -8,24 +8,43 @@
 
 #include <zephyr/device.h>
 
+#include "../control/control_internal.h"
 #include "engine.h"
 
 /**
- * Per-tick render pipeline: reset buffer to black, render the active
- * animation on top, and leave the result in `pixels` for the caller to
- * convert to `led_rgb` and fan out to the drivers.
- *
- * TODO(Phase B): apply global brightness for the active power source here,
- * after the animation render and before the caller converts to led_rgb.
- * Animations never see brightness; it is applied only at this stage.
+ * Per-tick render pipeline (DESIGN.md #3.3): reset buffer to black, render
+ * the base animation selected by the power policy, render the active ad-hoc
+ * overlay on top (an overlay owns only the pixels it writes; unwritten
+ * pixels keep the base result), then apply the brightness multiplier for
+ * the current power source. Animations never see brightness; it is applied
+ * only here, after both renders and before the caller converts to
+ * `led_rgb`.
  */
-void zmk_animation_render(const struct device *animation, struct zmk_animation_pixel *pixels,
-                          size_t num_pixels) {
+void zmk_animation_render(struct zmk_animation_pixel *pixels, size_t num_pixels) {
     for (size_t i = 0; i < num_pixels; ++i) {
         pixels[i].value.r = 0;
         pixels[i].value.g = 0;
         pixels[i].value.b = 0;
     }
 
-    zmk_animation_call_render_frame(animation, pixels, num_pixels);
+    if (!zmk_animation_control_is_running()) {
+        return;
+    }
+
+    const struct device *base = zmk_animation_control_current_base();
+    if (base != NULL) {
+        zmk_animation_call_render_frame(base, pixels, num_pixels);
+    }
+
+    zmk_animation_overlay_render(pixels, num_pixels);
+
+    float multiplier = zmk_animation_control_current_brightness_multiplier();
+    if (multiplier >= 1.0f) {
+        return;
+    }
+    for (size_t i = 0; i < num_pixels; ++i) {
+        pixels[i].value.r *= multiplier;
+        pixels[i].value.g *= multiplier;
+        pixels[i].value.b *= multiplier;
+    }
 }

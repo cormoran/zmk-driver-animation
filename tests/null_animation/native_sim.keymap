@@ -20,8 +20,18 @@
         compatible = "zmk,animation-none";
     };
 
+    /* See tests/engine for why this wraps animation_none0 (DESIGN.md #4
+     * item 10: `zmk,animation` chosen must resolve to animation-control). */
+    animation_control0: animation_control_0 {
+        compatible = "zmk,animation-control";
+        powered-animations = <&animation_none0>;
+        battery-animations = <&animation_none0>;
+        behavior-animations = <&animation_none0>;
+    };
+
     chosen {
-        zmk,animation = &animation_none0;
+        zmk,animation = &animation_control0;
+        zmk,animation-control = &animation_control0;
     };
 };
 

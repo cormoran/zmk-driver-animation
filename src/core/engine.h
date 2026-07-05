@@ -21,15 +21,13 @@
 #include <cormoran/animation/color.h>
 
 /**
- * Render one frame into `pixels`: reset the buffer to black, then render
- * `animation` on top.
+ * Render one frame into `pixels`: reset the buffer to black, render the
+ * control singleton's current base animation, render the active ad-hoc
+ * overlay (if any) on top, then apply the brightness multiplier for the
+ * current power source (DESIGN.md #3.3's "render pipeline per tick";
+ * brightness is applied only at this stage, animations never see it).
  *
- * Phase A has no control/power-policy layer yet, so `animation` is always
- * the `zmk,animation` chosen node itself.
- * TODO(Phase B): `animation` should always be the animation-control
- * singleton, which in turn picks the actually-active animation per the
- * power policy; this function signature will likely collapse to take no
- * animation argument once that lands.
+ * If no `zmk,animation-control` device is registered/ready (e.g. RPC-only
+ * native_sim builds with zero animation devices), this renders black.
  */
-void zmk_animation_render(const struct device *animation, struct zmk_animation_pixel *pixels,
-                          size_t num_pixels);
+void zmk_animation_render(struct zmk_animation_pixel *pixels, size_t num_pixels);
