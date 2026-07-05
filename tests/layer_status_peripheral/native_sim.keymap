@@ -1,0 +1,89 @@
+#include "../test.dtsi"
+#include <dt-bindings/zmk/keys.h>
+#include <dt-bindings/zmk/kscan_mock.h>
+#include <zmk_driver_animation/animation.dtsi>
+#include <zmk_driver_animation/animation_layer_status.dtsi>
+#include <dt-bindings/zmk_driver_animation/animation_control.h>
+#include <dt-bindings/zmk_driver_animation/animation_layer_status.h>
+
+/*
+ * Split-peripheral coverage for animations/layer_status.c +
+ * behaviors/animation_layer_status.c (BUG 6): no test in this repo set
+ * CONFIG_ZMK_SPLIT before this, so neither the peripheral-receiver
+ * behavior nor the central's split-sync path had any coverage.
+ *
+ * A keymap binding cannot exercise this on a split-peripheral native_sim
+ * build: peripherals forward raw kscan events toward the central instead
+ * of resolving keymap bindings locally (confirmed empirically - binding
+ * `animls` directly to a key here and pressing it via kscan only logs "No
+ * active transport that supports reporting events!" and never reaches
+ * behavior invocation at all). CONFIG_ZMK_ANIMATION_LAYER_STATUS_SPLIT_TEST
+ * (see src/split_test/layer_status_split_test.c) works around this the
+ * same way the sibling zmk-driver-pmw3610-with-custom-studio-rpc module's
+ * tests/split_peripheral does for its own relay logic: a boot-time
+ * self-test that bypasses kscan/keymap and invokes the `animls` behavior's
+ * binding directly (zmk_behavior_invoke_binding(), pressed then released -
+ * the exact call ZMK's split relay makes on a real peripheral), exercising
+ * the real on_keymap_binding_pressed/released path end to end rather than
+ * only the internal zmk_animation_layer_status_set_status() call it wraps.
+ *
+ * pixels[0] <- layer[0 + layer-offset(0)], so the self-test's bitmask (bit
+ * 0 set) should light pixels[0] with colors[0] (red).
+ */
+
+/ {
+    mock_led_strip0: mock_led_strip_0 {
+        compatible = "zmk,mock-led-strip";
+        chain-length = <1>;
+    };
+
+    animation: animation {
+        compatible = "zmk,animation";
+        drivers = <&mock_led_strip0>;
+        chain-lengths = <1>;
+        pixels = <&pixel 0 0>;
+    };
+
+    animation_control0: animation_control_0 {
+        compatible = "zmk,animation-control";
+        powered-animations = <&animation_layer_status>;
+        battery-animations = <&animation_layer_status>;
+        behavior-animations = <&animation_layer_status>;
+    };
+
+    chosen {
+        zmk,animation = &animation_control0;
+        zmk,animation-control = &animation_control0;
+    };
+
+    keymap {
+        compatible = "zmk,keymap";
+
+        default_layer {
+            bindings = <
+            &trans
+            >;
+        };
+    };
+};
+
+/*
+ * zmk_driver_animation/animation_layer_status.dtsi (included above) already
+ * declares the single `animation_layer_status:` node status="okay" (the
+ * BUILD_ASSERT in animations/layer_status.c allows only one enabled
+ * instance) - override its pixel/color properties here instead of
+ * declaring a second node, matching tests/zmk-config's tester_xiao_animation
+ * overlay.
+ */
+&animation_layer_status {
+    pixels = <0>;
+    default-color = <HSL(0, 0, 100)>;
+    colors = <HSL(0, 100, 50) HSL(120, 100, 50)>;
+    layer-offset = <0>;
+};
+
+&kscan {
+    events = <
+    ZMK_MOCK_RELEASE(0,0,300)
+    >;
+};

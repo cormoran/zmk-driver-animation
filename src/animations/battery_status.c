@@ -62,8 +62,24 @@ static void animation_battery_status_render_frame(const struct device *dev,
     }
 
     uint8_t battery_level = zmk_battery_state_of_charge();
-    uint8_t unit = 100 / (config->pixel_map_size * 3);
     uint32_t highest_point = counter % config->animation_duration_frames;
+
+    /*
+     * Per-pixel thresholds used to be computed as a precomputed
+     * `unit = 100 / (pixel_map_size * 3)` (integer division) compared
+     * against `battery_level <= (i * 3) * unit`. `unit` truncates to 0 for
+     * any `pixel_map_size >= 34` (100 / 102 == 0 in integer division),
+     * which collapsed every threshold to 0 and made every pixel render as
+     * color_high regardless of the actual battery level. Comparing the
+     * cross-multiplied form `battery_level * pixel_map_size * 3` against
+     * `i * 3 * 100` is equivalent to `battery_level <= (i * 3) * (100 /
+     * (pixel_map_size * 3))` for real-number division, but never divides,
+     * so there is no truncation for any pixel_map_size >= 1 (both sides
+     * are exact uint32_t products; pixel_map_size is DT_INST_PROP_LEN-
+     * bounded to a small array size in practice, so `battery_level (<=
+     * 100) * pixel_map_size * 3` cannot realistically overflow uint32_t).
+     */
+    uint32_t level_scaled = (uint32_t)battery_level * config->pixel_map_size * 3;
 
     for (size_t i = 0; i < config->pixel_map_size; ++i) {
         uint32_t point = i * config->animation_duration_frames / config->pixel_map_size;
@@ -74,11 +90,11 @@ static void animation_battery_status_render_frame(const struct device *dev,
         float ratio = 1.0f - (float)gap / (config->animation_duration_frames / 2);
 
         struct zmk_color_hsl color = {0};
-        if (battery_level <= (i * 3) * unit) {
+        if (level_scaled <= (uint32_t)i * 3 * 100) {
             /* default (off): treat 0% as "no bar lit" */
-        } else if (battery_level < (i * 3 + 1) * unit) {
+        } else if (level_scaled < (uint32_t)(i * 3 + 1) * 100) {
             color = *config->color_low;
-        } else if (battery_level < (i * 3 + 2) * unit) {
+        } else if (level_scaled < (uint32_t)(i * 3 + 2) * 100) {
             color = *config->color_middle;
         } else {
             color = *config->color_high;
@@ -121,6 +137,32 @@ static bool animation_battery_status_is_finished(const struct device *dev) {
 static void on_battery_state_changed(const struct device *dev) {
     const struct animation_battery_status_config *config = dev->config;
     struct animation_battery_status_data *data = dev->data;
+
+    /*
+     * v1 (git show main:src/animation_battery_level.c,
+     * on_battery_status_change) only enqueued the low-battery alert while
+     * `!data->running` - i.e. suppressed entirely whenever this exact
+     * device instance was already actively playing, whether as the
+     * selected bar-graph base animation or as the alert overlay itself
+     * (re-entrancy guard). The Phase B port dropped that outer guard,
+     * leaving only the low_alert_interval_ms rate limit, which is a
+     * different check (time-since-last-alert, not "is this device already
+     * on screen"): the alert could now be (re-)enqueued as an overlay on
+     * top of this same animation's own bar-graph rendering.
+     *
+     * Judgement call: restore an equivalent guard rather than keep the
+     * dropped behavior. `animation_battery_status_is_finished(dev)`
+     * (data->counter == 0) is this device's own "not currently playing"
+     * state and is the direct v2 analog of v1's per-device `running` flag
+     * - using it here (instead of e.g. comparing against
+     * zmk_animation_control_current_base()) keeps the check local to this
+     * animation and correct for both roles data->counter covers (base and
+     * overlay), matching v1 exactly rather than only checking "am I the
+     * selected base".
+     */
+    if (!animation_battery_status_is_finished(dev)) {
+        return;
+    }
 
     uint8_t level = zmk_battery_state_of_charge();
     if (config->low_alert_stop_threshold < level && level < config->low_alert_start_threshold &&

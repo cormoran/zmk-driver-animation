@@ -62,7 +62,15 @@ static void animation_stop_work_handler(struct k_work *work) {
     ARG_UNUSED(work);
     int64_t now = k_uptime_get();
     uint32_t elapsed = (uint32_t)(now - last_work_time);
-    uint32_t min_remaining = 0;
+    /*
+     * Track the soonest-expiring active slot, not the longest-remaining one
+     * (a code-review bug: the previous version tracked the maximum, which
+     * could delay stopping a nearly-finished trigger by however long a
+     * different, just-(re)started trigger still had left). UINT32_MAX
+     * sentinel means "no active slot seen yet"; only slots with
+     * remaining_duration_ms > 0 after this tick's update participate.
+     */
+    uint32_t min_remaining = UINT32_MAX;
 
     for (int i = 0; i < CONFIG_ZMK_ANIMATION_TRIGGER_MAX_PARALLELISM; i++) {
         if (!trigger_statuses[i].triggered) {
@@ -76,7 +84,7 @@ static void animation_stop_work_handler(struct k_work *work) {
         }
         if (s.remaining_duration_ms > elapsed) {
             s.remaining_duration_ms -= elapsed;
-            if (min_remaining < s.remaining_duration_ms) {
+            if (s.remaining_duration_ms < min_remaining) {
                 min_remaining = s.remaining_duration_ms;
             }
             trigger_statuses[i] = s;
@@ -86,7 +94,7 @@ static void animation_stop_work_handler(struct k_work *work) {
         if (s.num_pressed > 0) {
             LOG_INF("animtrig %d: still held, extending", s.index);
             s.remaining_duration_ms = CONFIG_ZMK_ANIMATION_TRIGGER_EXTEND_MS_ON_HOLD;
-            if (min_remaining < s.remaining_duration_ms) {
+            if (s.remaining_duration_ms < min_remaining) {
                 min_remaining = s.remaining_duration_ms;
             }
             trigger_statuses[i] = s;
@@ -100,7 +108,7 @@ static void animation_stop_work_handler(struct k_work *work) {
     }
 
     last_work_time = now;
-    if (min_remaining > 0) {
+    if (min_remaining != UINT32_MAX) {
         k_work_schedule(&animation_stop_work, K_MSEC(min_remaining));
     }
 }

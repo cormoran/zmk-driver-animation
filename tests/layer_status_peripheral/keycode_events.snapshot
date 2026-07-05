@@ -1,0 +1,7 @@
+PASS: layer_status_split_test invoked animls binding
+zmk: mock_led_strip pixel0 r=12 g=0 b=0
+zmk: mock_led_strip pixel0 r=12 g=0 b=0
+zmk: mock_led_strip pixel0 r=12 g=0 b=0
+zmk: mock_led_strip pixel0 r=12 g=0 b=0
+zmk: mock_led_strip pixel0 r=12 g=0 b=0
+zmk: mock_led_strip pixel0 r=12 g=0 b=0

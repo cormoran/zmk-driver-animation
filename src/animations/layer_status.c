@@ -161,7 +161,16 @@ static void animation_layer_status_render_frame(const struct device *dev,
 
     for (size_t i = 0; i < config->pixel_map_size; ++i) {
         uint8_t idx = i + config->layer_offset;
-        if (data->layer_status & BIT(idx)) {
+        /*
+         * data->layer_status is a uint32_t bitmask, so BIT(idx) is
+         * undefined behavior once idx >= 32 (shifting by >= the width of
+         * the shifted type) - unlike the colors[idx] access below, which
+         * was already correctly guarded by idx < config->colors_size.
+         * Layer indices >= 32 can't be represented in the bitmask at all,
+         * so treat them the same as "bit not set" (pixel renders as
+         * inactive/black) without evaluating BIT(idx).
+         */
+        if (idx < 32 && (data->layer_status & BIT(idx))) {
             if (idx < config->colors_size &&
                 (config->colors[idx].h != 0 || config->colors[idx].s != 0 ||
                  config->colors[idx].l != 0)) {

@@ -127,6 +127,23 @@ static void refresh_base_animation(const struct device *dev) {
     const struct device *next = current_base_animation(dev);
     const struct device *previous = data->current_base;
 
+    /*
+     * Defense-in-depth (v1's change_animation() checked readiness before
+     * starting; this port dropped it): every animation type's init()
+     * currently returns 0 unconditionally, so `next` is unreachable here
+     * unless ready - but if a future animation type gains a real
+     * init-failure path, calling start() on a not-ready device would be a
+     * bug. Treat "selected but not ready" the same as "nothing selected"
+     * (NULL): current_base_animation()/control_render_frame()/
+     * control_stop() are all already NULL-safe on data->current_base, so
+     * this degrades to "no playable animation" rather than crashing or
+     * silently rendering nothing while bookkeeping disagrees.
+     */
+    if (next != NULL && !device_is_ready(next)) {
+        LOG_WRN("animation control: selected base animation not ready, treating as none");
+        next = NULL;
+    }
+
     if (next == previous) {
         return;
     }

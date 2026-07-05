@@ -1,0 +1,102 @@
+#include "../test.dtsi"
+#include <dt-bindings/zmk/keys.h>
+#include <dt-bindings/zmk/kscan_mock.h>
+#include <zmk_driver_animation/animation.dtsi>
+#include <dt-bindings/zmk_driver_animation/animation_control.h>
+
+/*
+ * Regression coverage for the truncating-division bug in
+ * animations/battery_status.c's render_frame: the old code precomputed
+ * `unit = 100 / (pixel_map_size * 3)`, an integer division that truncates
+ * to 0 for any pixel_map_size >= 34 (100 / 102 == 0), which made every
+ * per-pixel threshold compare against 0 and every pixel render as
+ * color_high regardless of the real battery level.
+ *
+ * `pixel_map_size` here is 34 (the smallest size that triggered the bug),
+ * with every one of the 34 logical bar-graph positions mapped onto the
+ * same single physical pixel (index 0) - the only pixel the mock LED strip
+ * driver logs (src/mock_led_strip.c only reports pixels[0]). This is a
+ * legal, if unusual, `pixels` DT list (repeated indices just mean later
+ * loop iterations overwrite earlier ones in the shared frame buffer), and
+ * it means the *last* loop iteration (i=33) is what ends up visible.
+ *
+ * IMPORTANT LIMITATION (documented per this bug's task description):
+ * native_sim's zmk_battery_state_of_charge() always returns 0 without a
+ * real or emulated battery/fuel-gauge sensor device, and this Zephyr
+ * checkout has no such native_sim-compatible emulated driver available.
+ * At battery_level == 0, the *old* buggy code and the *new* fixed code
+ * produce the same observable result here ("off"/black, i * 3 * unit == 0
+ * either way for i=33 same as for any i, since unit truncated to 0 makes
+ * every threshold 0 - and 0 <= 0 is true regardless), so this test cannot
+ * visually distinguish old vs. new arithmetic the way tests/battery_status'
+ * own doc comment already notes for the low-battery alert. What this test
+ * *does* prove: pixel_map_size=34 builds and runs without crashing,
+ * without out-of-bounds access, and without a compiler warning on the new
+ * cross-multiplied arithmetic (`(uint32_t)battery_level * pixel_map_size *
+ * 3` for battery_level<=100 and pixel_map_size=34 is 100*34*3=10200, well
+ * within uint32_t range, so there is no overflow either).
+ *
+ * The truncation-freedom of the new arithmetic itself is verified by
+ * inspection/proof, not by this test's observed output (see the comment in
+ * animations/battery_status.c and BUG 2's report): comparing
+ * `battery_level * pixel_map_size * 3 <=/< i * 3 * 100` is a pure
+ * cross-multiplication of the original real-valued inequality
+ * `battery_level <=/< (i * 3) * (100 / (pixel_map_size * 3))` with no
+ * intermediate division at all, so it cannot truncate for any
+ * pixel_map_size >= 1 (both sides are exact integer products; the
+ * ARGS/ranges involved - battery_level in [0,100], pixel_map_size bounded
+ * by DT_INST_PROP_LEN to a realistic LED count - stay far under UINT32_MAX
+ * for both sides of every comparison).
+ */
+
+/ {
+    mock_led_strip0: mock_led_strip_0 {
+        compatible = "zmk,mock-led-strip";
+        chain-length = <1>;
+    };
+
+    animation: animation {
+        compatible = "zmk,animation";
+        drivers = <&mock_led_strip0>;
+        chain-lengths = <1>;
+        pixels = <&pixel 0 0>;
+    };
+
+    animation_battery: animation_battery {
+        compatible = "zmk,animation-battery-status";
+        pixels = <0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0>;
+        color-high = <HSL(120, 100, 50)>;
+        color-middle = <HSL(60, 100, 50)>;
+        color-low = <HSL(0, 100, 50)>;
+        animation-duration-seconds = <1>;
+    };
+
+    animation_control0: animation_control_0 {
+        compatible = "zmk,animation-control";
+        powered-animations = <&animation_battery>;
+        battery-animations = <&animation_battery>;
+        behavior-animations = <&animation_battery>;
+    };
+
+    chosen {
+        zmk,animation = &animation_control0;
+        zmk,animation-control = &animation_control0;
+    };
+
+    keymap {
+        compatible = "zmk,keymap";
+
+        default_layer {
+            bindings = <
+            &kp A
+            >;
+        };
+    };
+};
+
+&kscan {
+    events = <
+    ZMK_MOCK_PRESS(0,0,300)
+    ZMK_MOCK_RELEASE(0,0,300)
+    >;
+};

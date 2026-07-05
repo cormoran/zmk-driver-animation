@@ -38,6 +38,20 @@ config ZMK_ANIMATION_TRIGGER_EXTEND_MS_ON_HOLD
     int "Animation play duration extension on hold"
     default 500
 
+config ZMK_ANIMATION_LAYER_STATUS_SPLIT_TEST
+    bool "Enable native_sim-only layer-status split-peripheral test hook"
+    depends on ZMK_SPLIT && !ZMK_SPLIT_ROLE_CENTRAL
+    help
+      Adds a boot-time self-test (see tests/layer_status_peripheral) that
+      invokes the `animls` behavior's binding directly - bypassing kscan,
+      since a split-peripheral native_sim build forwards raw kscan events
+      to the (nonexistent, in this test) central rather than resolving
+      keymap bindings locally, so a keymap binding alone cannot exercise
+      this path in native_sim. This asserts the real
+      on_keymap_binding_pressed/released behavior-invocation path end to
+      end, not just the internal zmk_animation_layer_status_set_status()
+      call it wraps.
+
 endif
 
 config ZMK_ANIMATION_MOCK_LED_STRIP

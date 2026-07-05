@@ -1,0 +1,135 @@
+#include "../test.dtsi"
+#include <dt-bindings/zmk/keys.h>
+#include <dt-bindings/zmk/kscan_mock.h>
+#include <zmk_driver_animation/animation.dtsi>
+#include <behaviors/animation_trigger.dtsi>
+#include <dt-bindings/zmk_driver_animation/animation_control.h>
+#include <dt-bindings/zmk_driver_animation/animation_trigger.h>
+
+/*
+ * Regression test for animation_stop_work_handler's reschedule bug
+ * (src/behaviors/animation_trigger.c): it used to track the MAXIMUM
+ * remaining duration across active trigger slots and reschedule the next
+ * handler run that far out, instead of the MINIMUM - so a slot with a
+ * short remaining duration could be starved from being checked (and
+ * stopped) on time by another slot with a much longer remaining duration.
+ *
+ * Config (native_sim.conf): MIN_DURATION_MS=5000, EXTEND_MS_ON_HOLD=200 -
+ * deliberately asymmetric so the effect is large and easy to assert on via
+ * log line counts (this repo's usual events.patterns/snapshot style; no
+ * wall-clock timestamps are logged, so the assertion is on *how many*
+ * "still held, extending" lines appear, not on literal millisecond values).
+ *
+ * Slot B (key position 1, animtrig index 1) is pressed and held for the
+ * entire test (never released), so animation_stop_work_handler
+ * continuously re-extends it by EXTEND_MS_ON_HOLD (200ms) every time it is
+ * checked - as long as the handler keeps waking up every ~200ms as it
+ * should, "animtrig 1: still held, extending" logs once per wakeup.
+ *
+ * Slot A (key position 0, animtrig index 0) is pressed once, shortly after
+ * B's first extension, and released almost immediately, so it needs the
+ * full MIN_DURATION_MS (5000ms) of its own budget to elapse (decremented by
+ * whatever the handler's actual wakeup interval turns out to be) before it
+ * stops.
+ *
+ * Correct (fixed) behavior: the handler keeps waking up every ~200ms
+ * (driven by B's short remaining being the minimum), so B keeps logging
+ * "still held, extending" throughout - roughly 25+ times - while A's
+ * 5000ms budget ticks down 200ms at a time in the background, until A
+ * finally logs "stop (duration elapsed)".
+ *
+ * Buggy (pre-fix) behavior: once A (fresh remaining ~5000ms) and B
+ * (remaining 200ms) are both active, the old code picked A's much larger
+ * remaining as the next reschedule delay, so B's "still held, extending"
+ * stops appearing for a ~4800ms stretch - only 3-4 such lines total appear
+ * before A's own deadline finally forces the next wakeup, at which point
+ * both A's stop and B's extend land on the same, badly-delayed tick. The
+ * snapshot below asserts the fixed (frequent) count.
+ */
+
+/ {
+    mock_led_strip0: mock_led_strip_0 {
+        compatible = "zmk,mock-led-strip";
+        chain-length = <1>;
+    };
+
+    animation: animation {
+        compatible = "zmk,animation";
+        drivers = <&mock_led_strip0>;
+        chain-lengths = <1>;
+        pixels = <&pixel 0 0>;
+    };
+
+    animation_base: animation_base {
+        compatible = "zmk,animation-solid";
+        pixels = <0>;
+        colors = <HSL(0, 100, 50)>;
+    };
+
+    animation_overlay_a: animation_overlay_a {
+        compatible = "zmk,animation-solid";
+        pixels = <0>;
+        colors = <HSL(240, 100, 50)>;
+    };
+
+    animation_overlay_b: animation_overlay_b {
+        compatible = "zmk,animation-solid";
+        pixels = <0>;
+        colors = <HSL(120, 100, 50)>;
+    };
+
+    animation_control0: animation_control_0 {
+        compatible = "zmk,animation-control";
+        powered-animations = <&animation_base>;
+        battery-animations = <&animation_base>;
+        behavior-animations = <&animation_overlay_a &animation_overlay_b>;
+    };
+
+    chosen {
+        zmk,animation = &animation_control0;
+        zmk,animation-control = &animation_control0;
+    };
+
+    keymap {
+        compatible = "zmk,keymap";
+
+        default_layer {
+            bindings = <
+            &animtrig ANM_TRG 0
+            &animtrig ANM_TRG 1
+            &trans
+            &trans
+            >;
+        };
+    };
+};
+
+/*
+ * Absolute timeline (ZMK_MOCK_PRESS/RELEASE's msec is the delay before the
+ * *next* events-list entry fires, per tests/overlay_queue's
+ * native_sim.keymap comment):
+ *   t=0      press position 1 (slot B, index 1): schedules
+ *            animation_stop_work at t=5000 (MIN_DURATION_MS). Never
+ *            released - held for the rest of the test.
+ *   t=5300   press position 0 (slot A, index 0): a fresh slot with
+ *            remaining=5000ms. By now animation_stop_work has already
+ *            ticked at least once (at t=5000, extending B to 200ms) and
+ *            settled into B's ~200ms-cycle rhythm (ticks at 5200, 5400,
+ *            ...) - t=5300 is deliberately placed mid-cycle (100ms clear
+ *            of the 5200 and 5400 ticks on either side) so which cycle A
+ *            is first observed in doesn't depend on scheduler/log-timing
+ *            jitter between the press event and a tick landing at nearly
+ *            the same instant.
+ *   t=5330   release position 0: A's num_pressed drops to 0.
+ *   (long trailing delay so the sim stays alive well past A's ~10200ms
+ *   deadline; final no-op release on an unbound position, matching the
+ *   trailing-keepalive trick used by tests/animation_trigger.)
+ */
+&kscan {
+    events = <
+    ZMK_MOCK_PRESS(0,1,5300)
+    ZMK_MOCK_PRESS(0,0,30)
+    ZMK_MOCK_RELEASE(0,0,10300)
+    ZMK_MOCK_RELEASE(1,0,300)
+    >;
+};

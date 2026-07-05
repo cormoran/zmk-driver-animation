@@ -27,6 +27,10 @@ if(CONFIG_ZMK_ANIMATION_MOCK_LED_STRIP)
     target_sources(app PRIVATE src/mock_led_strip.c)
 endif()
 
+if(CONFIG_ZMK_ANIMATION_LAYER_STATUS_SPLIT_TEST)
+    target_sources(app PRIVATE src/split_test/layer_status_split_test.c)
+endif()
+
 if(CONFIG_ZMK_ANIMATION_STUDIO_RPC)
     file(GLOB_RECURSE C_FILES ${CMAKE_CURRENT_SOURCE_DIR}/src/studio/*.c)
     target_sources(app PRIVATE ${C_FILES})
