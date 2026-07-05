@@ -1,0 +1,5 @@
+file_format: "1"
+id: tester_xiao_animation
+name: Tester XIAO Animation
+type: shield
+requires: [seeed_xiao]

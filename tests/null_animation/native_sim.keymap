@@ -1,0 +1,42 @@
+#include "../test.dtsi"
+#include <dt-bindings/zmk/keys.h>
+#include <dt-bindings/zmk/kscan_mock.h>
+#include <zmk_driver_animation/animation.dtsi>
+
+/ {
+    mock_led_strip0: mock_led_strip_0 {
+        compatible = "zmk,mock-led-strip";
+        chain-length = <2>;
+    };
+
+    animation: animation {
+        compatible = "zmk,animation";
+        drivers = <&mock_led_strip0>;
+        chain-lengths = <2>;
+        pixels = <&pixel 0 0>, <&pixel 1 0>;
+    };
+
+    animation_none0: animation_none_0 {
+        compatible = "zmk,animation-none";
+    };
+
+    chosen {
+        zmk,animation = &animation_none0;
+    };
+};
+
+/*
+ * See tests/engine for why the default kscan mock event list needs
+ * extending: simulated time must run past at least one tick period
+ * (100ms at 10 FPS here) before native_sim exits.
+ */
+&kscan {
+    events = <
+    ZMK_MOCK_PRESS(0,0,50)
+    ZMK_MOCK_RELEASE(0,0,50)
+    ZMK_MOCK_PRESS(0,0,50)
+    ZMK_MOCK_RELEASE(0,0,50)
+    ZMK_MOCK_PRESS(0,0,50)
+    ZMK_MOCK_RELEASE(0,0,50)
+    >;
+};

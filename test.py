@@ -100,6 +100,18 @@ class WestCommandsTests(unittest.TestCase):
                     ],
                     device=[],
                 ),
+                "animation_tester_xiao_shield": ConfigAndDeviceTree(
+                    config=[
+                        "CONFIG_SHIELD_TESTER_XIAO_ANIMATION=y",
+                        "CONFIG_ZMK_ANIMATION=y",
+                        "CONFIG_WS2812_STRIP_SPI=y",
+                    ],
+                    device=[
+                        "DT_COMPAT_HAS_OKAY_zmk_animation",
+                        "DT_COMPAT_HAS_OKAY_zmk_animation_solid",
+                        "DT_COMPAT_HAS_OKAY_worldsemi_ws2812_spi",
+                    ],
+                ),
             }
         )
 

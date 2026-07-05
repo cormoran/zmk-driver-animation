@@ -1,0 +1,66 @@
+#include <dt-bindings/led/led.h>
+#include <zmk_driver_animation/animation.dtsi>
+#include <dt-bindings/zmk/matrix_transform.h>
+
+/*
+ * HSL(h, s, l) packs an HSL color into the uint32_t representation
+ * `struct zmk_color_hsl` expects. Phase A has no behaviors/control layer
+ * yet (that's where v1 kept this macro), so it is defined locally here.
+ */
+#ifdef CONFIG_BIG_ENDIAN
+#define HSL(h, s, l) ((h << 16) + (s << 8) + l)
+#else
+#define HSL(h, s, l) (h + (s << 16) + (l << 24))
+#endif
+
+&xiao_spi {
+    status = "okay";
+    pinctrl-0 = <&spi2_default>;
+    pinctrl-1 = <&spi2_sleep>;
+    pinctrl-names = "default", "sleep";
+
+    led_strip: ws2812@0 {
+        compatible = "worldsemi,ws2812-spi";
+        reg = <0>;
+        spi-max-frequency = <4000000>;
+        chain-length = <1>;
+        spi-one-frame = <0x70>;
+        spi-zero-frame = <0x40>;
+        color-mapping = <LED_COLOR_ID_GREEN
+                         LED_COLOR_ID_RED
+                         LED_COLOR_ID_BLUE>;
+    };
+};
+
+/ {
+    chosen {
+        zmk,kscan = &kscan0;
+        zmk,matrix-transform = &transform0;
+        zmk,animation = &animation_solid0;
+    };
+
+    kscan0: kscan {
+        compatible = "zmk,kscan-gpio-direct";
+        input-gpios = <&xiao_d 0 (GPIO_ACTIVE_LOW | GPIO_PULL_UP)>;
+    };
+
+    transform0: keymap_transform_0 {
+        compatible = "zmk,matrix-transform";
+        columns = <1>;
+        rows = <1>;
+        map = <RC(0,0)>;
+    };
+
+    animation: animation {
+        compatible = "zmk,animation";
+        drivers = <&led_strip>;
+        chain-lengths = <1>;
+        pixels = <&pixel 0 0>;
+    };
+
+    animation_solid0: animation_solid_0 {
+        compatible = "zmk,animation-solid";
+        pixels = <0>;
+        colors = <HSL(120, 100, 50)>;
+    };
+};

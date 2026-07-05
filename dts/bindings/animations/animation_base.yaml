@@ -1,0 +1,14 @@
+# Copyright (c) 2020, The ZMK Contributors
+# SPDX-License-Identifier: MIT
+
+description: |
+  Shared base properties for animation nodes. Note: v1's `blending-mode`
+  property is intentionally not included here (dead code, no consumer -
+  see DESIGN.md #4 item 5); revival is tracked as an extension idea.
+
+properties:
+  pixels:
+    type: array
+    required: true
+    description: |
+      Pixel positions to which the animation should apply.

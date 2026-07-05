@@ -1,0 +1,66 @@
+#include "../test.dtsi"
+#include <dt-bindings/zmk/keys.h>
+#include <dt-bindings/zmk/kscan_mock.h>
+#include <zmk_driver_animation/animation.dtsi>
+
+/*
+ * HSL(h, s, l) packs an HSL color into the uint32_t representation
+ * `struct zmk_color_hsl` expects (h in the low 16 bits, s next byte, l high
+ * byte on little-endian targets, matching v1's dt-bindings macro of the
+ * same name). Phase A has no behaviors/control layer yet, so this is
+ * defined locally rather than pulled in from a not-yet-ported header.
+ */
+#ifdef CONFIG_BIG_ENDIAN
+#define HSL(h, s, l) ((h << 16) + (s << 8) + l)
+#else
+#define HSL(h, s, l) (h + (s << 16) + (l << 24))
+#endif
+
+/ {
+    mock_led_strip0: mock_led_strip_0 {
+        compatible = "zmk,mock-led-strip";
+        chain-length = <3>;
+    };
+
+    animation: animation {
+        compatible = "zmk,animation";
+        drivers = <&mock_led_strip0>;
+        chain-lengths = <3>;
+        pixels = <&pixel 0 0>, <&pixel 1 0>, <&pixel 2 0>;
+    };
+
+    animation_solid0: animation_solid_0 {
+        compatible = "zmk,animation-solid";
+        pixels = <0 1 2>;
+        duration = <3>;
+        colors = <HSL(0, 100, 50) HSL(120, 100, 50) HSL(240, 100, 50)>;
+    };
+
+    chosen {
+        zmk,animation = &animation_solid0;
+    };
+};
+
+/*
+ * Override the default (short) kscan mock event list from test.dtsi: the
+ * animation engine ticks at CONFIG_ZMK_ANIMATION_FPS (10 here, i.e. every
+ * 100ms), so simulated time needs to run well past that before the mock
+ * kscan driver's `exit-after` terminates native_sim, or the tick timer
+ * never fires even once.
+ */
+&kscan {
+    events = <
+    ZMK_MOCK_PRESS(0,0,50)
+    ZMK_MOCK_RELEASE(0,0,50)
+    ZMK_MOCK_PRESS(0,0,50)
+    ZMK_MOCK_RELEASE(0,0,50)
+    ZMK_MOCK_PRESS(0,0,50)
+    ZMK_MOCK_RELEASE(0,0,50)
+    ZMK_MOCK_PRESS(0,0,50)
+    ZMK_MOCK_RELEASE(0,0,50)
+    ZMK_MOCK_PRESS(0,0,50)
+    ZMK_MOCK_RELEASE(0,0,50)
+    ZMK_MOCK_PRESS(0,0,50)
+    ZMK_MOCK_RELEASE(0,0,50)
+    >;
+};

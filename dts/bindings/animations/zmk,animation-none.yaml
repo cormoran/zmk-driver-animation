@@ -1,0 +1,9 @@
+# Copyright (c) 2026 cormoran
+# SPDX-License-Identifier: MIT
+
+description: |
+  Null-object animation: initializes successfully and renders nothing
+  (pixels stay at whatever the engine reset them to, i.e. black). Used to
+  represent "no animation selected" without the readiness-as-sentinel hack
+  v1 used for its "empty" animation (DESIGN.md #4 item 9).
+compatible: "zmk,animation-none"

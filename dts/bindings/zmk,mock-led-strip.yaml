@@ -1,0 +1,12 @@
+# Copyright (c) 2026 cormoran
+# SPDX-License-Identifier: MIT
+
+description: Mock LED strip for animation testing
+
+compatible: "zmk,mock-led-strip"
+
+properties:
+  chain-length:
+    type: int
+    required: true
+    description: Number of LEDs in the strip

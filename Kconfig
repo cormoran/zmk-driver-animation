@@ -1,10 +1,25 @@
 config ZMK_ANIMATION
-    bool "Enable animation feature"
+    bool "RGB Animations"
+    select LED_STRIP
 
 if ZMK_ANIMATION
+
+config ZMK_ANIMATION_FPS
+    int "Animation FPS"
+    range 1 60
+    default 30
+
+config ZMK_ANIMATION_STOP_ON_IDLE
+    bool "Whether to stop animation on idle state or not"
+    default y
 
 config ZMK_ANIMATION_STUDIO_RPC
     bool "Enable animation feature custom Studio RPC"
     depends on ZMK_STUDIO
 
 endif
+
+config ZMK_ANIMATION_MOCK_LED_STRIP
+    bool "Mock LED strip for animation testing"
+    depends on ZMK_ANIMATION
+    select LED_STRIP

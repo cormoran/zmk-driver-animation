@@ -19,3 +19,7 @@ include:
     shield: tester_xiao
     cmake-args: -DCONFIG_ZMK_STUDIO=y -DCONFIG_ZMK_ANIMATION=y -DCONFIG_ZMK_ANIMATION_STUDIO_RPC=y -DCONFIG_ZMK_CUSTOM_SETTINGS=y -DCONFIG_ZMK_CUSTOM_SETTINGS_STUDIO_RPC=y
     snippet: studio-rpc-usb-uart
+
+  - artifact: animation_tester_xiao_shield
+    board: xiao_ble//zmk
+    shield: tester_xiao_animation
