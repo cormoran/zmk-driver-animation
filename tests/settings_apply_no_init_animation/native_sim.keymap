@@ -1,0 +1,89 @@
+#include "../test.dtsi"
+#include <dt-bindings/zmk/keys.h>
+#include <dt-bindings/zmk/kscan_mock.h>
+#include <zmk_driver_animation/animation.dtsi>
+#include <dt-bindings/zmk_driver_animation/animation_control.h>
+
+/*
+ * Regression test for the boot-scheduling bug: animation_control_init()
+ * used to schedule the boot delayed-work item (which applies persisted
+ * custom settings, DESIGN.md #3.5) only `if (config->init_animation !=
+ * NULL)` - even though the handler itself has no such restriction on the
+ * settings-apply step. A config with no `init-animation` property (a
+ * common, reasonable minimal setup - nothing in DESIGN.md/README requires a
+ * boot animation) would therefore never get its persisted brightness /
+ * animation-selection settings restored at boot.
+ *
+ * This is tests/settings_apply's keymap with the `init-animation` property
+ * removed entirely (init-animation-delay-ms is independent of
+ * init-animation and is kept short so the test doesn't need to wait for
+ * the default 100ms production delay). Everything else - the seeded
+ * persisted value, the assertion log lines - is identical to
+ * tests/settings_apply, so a pass here on top of a pass there proves the
+ * settings-apply path no longer depends on init-animation being set.
+ */
+
+/ {
+    mock_led_strip0: mock_led_strip_0 {
+        compatible = "zmk,mock-led-strip";
+        chain-length = <2>;
+    };
+
+    animation: animation {
+        compatible = "zmk,animation";
+        drivers = <&mock_led_strip0>;
+        chain-lengths = <2>;
+        pixels = <&pixel 0 0>, <&pixel 1 0>;
+    };
+
+    animation_solid0: animation_solid_0 {
+        compatible = "zmk,animation-solid";
+        pixels = <0 1>;
+        colors = <HSL(0, 100, 50)>;
+    };
+
+    animation_solid1: animation_solid_1 {
+        compatible = "zmk,animation-solid";
+        pixels = <0 1>;
+        colors = <HSL(120, 100, 50)>;
+    };
+
+    animation_control0: animation_control_0 {
+        compatible = "zmk,animation-control";
+        powered-animations = <&animation_solid0 &animation_solid1>;
+        battery-animations = <&animation_solid0 &animation_solid1>;
+        behavior-animations = <&animation_solid0>;
+        brightness-steps = <5>;
+        default-powered-brightness = <2>;
+        default-battery-brightness = <2>;
+        /* Deliberately no init-animation property (see top-of-file comment). */
+        init-animation-delay-ms = <10>;
+    };
+
+    chosen {
+        zmk,animation = &animation_control0;
+        zmk,animation-control = &animation_control0;
+    };
+};
+
+&kscan {
+    events = <
+    ZMK_MOCK_PRESS(0,0,50)
+    ZMK_MOCK_RELEASE(0,0,50)
+    >;
+};
+
+/ {
+    keymap {
+        compatible = "zmk,keymap";
+
+        default_layer {
+            bindings = <
+            &kp A
+            &kp B
+            &kp C
+            &kp D
+            >;
+        };
+    };
+};

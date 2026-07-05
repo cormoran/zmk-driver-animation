@@ -105,7 +105,14 @@ struct animation_control_data {
      */
     const struct device *current_base;
 
-    struct k_work_delayable init_animation_work;
+    /*
+     * Fires init_animation_delay_ms after boot regardless of whether an
+     * init animation is configured: settings-apply (below) must run either
+     * way, so this is scheduled unconditionally from
+     * animation_control_init(). Named for its dual purpose, not just the
+     * init-animation enqueue it also happens to do.
+     */
+    struct k_work_delayable boot_work;
 };
 
 static const struct device *current_base_animation(const struct device *dev) {
@@ -509,7 +516,16 @@ int zmk_animation_enqueue(const struct device *animation, bool cancelable, uint3
 
 /* --- init + event listeners --- */
 
-static void init_animation_work_handler(struct k_work *work) {
+/*
+ * Fires init_animation_delay_ms after boot (scheduled unconditionally from
+ * animation_control_init() below - see the comment there for why this must
+ * not be gated on config->init_animation being set). Does two unrelated
+ * things at that same safe point:
+ *   1. Applies persisted custom settings (if the Kconfig is on) - this is
+ *      the primary reason the work item must always run.
+ *   2. Enqueues the configured init animation, if any.
+ */
+static void animation_control_boot_work_handler(struct k_work *work) {
     ARG_UNUSED(work);
 
 #if IS_ENABLED(CONFIG_ZMK_ANIMATION_CUSTOM_SETTINGS)
@@ -523,7 +539,12 @@ static void init_animation_work_handler(struct k_work *work) {
      * - so applying here (rather than from animation_control_init() itself)
      * is correct by construction, not by priority tuning. Verified empirically
      * by tests/settings_apply (native_sim test seeding a persisted value and
-     * asserting the applied state after this work item fires).
+     * asserting the applied state after this work item fires) and
+     * tests/settings_apply_no_init_animation (same, but with no
+     * `init-animation` DT property configured at all - regression test for
+     * the bug where this work item was only ever scheduled when
+     * config->init_animation != NULL, so settings never applied on a
+     * perfectly common minimal config that has no boot animation).
      *
      * Applied before the init-animation is enqueued below so the init
      * animation itself reflects the persisted enabled/selection state, not
@@ -616,10 +637,19 @@ static int animation_control_init(const struct device *dev) {
 
     data->last_powered = zmk_animation_power_policy_is_powered();
 
-    if (config->init_animation != NULL) {
-        k_work_init_delayable(&data->init_animation_work, init_animation_work_handler);
-        k_work_schedule(&data->init_animation_work, K_MSEC(config->init_animation_delay_ms));
-    }
+    /*
+     * Scheduled unconditionally - NOT just when config->init_animation !=
+     * NULL. animation_control_boot_work_handler() also applies persisted
+     * custom settings (DESIGN.md #3.5) before it gets to the init-animation
+     * enqueue, and that needs to happen on every boot regardless of whether
+     * an init animation is configured. A config with no `init-animation`
+     * property (a common, reasonable minimal setup - DESIGN.md/README do
+     * not require one) must still get its persisted brightness/animation
+     * selection restored; gating the schedule call on init_animation would
+     * silently skip that. See tests/settings_apply_no_init_animation.
+     */
+    k_work_init_delayable(&data->boot_work, animation_control_boot_work_handler);
+    k_work_schedule(&data->boot_work, K_MSEC(config->init_animation_delay_ms));
 
     LOG_INF("ZMK animation control ready (%zu powered, %zu battery, %zu behavior animations)",
             config->powered_animations_size, config->battery_animations_size,

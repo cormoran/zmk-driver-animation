@@ -12,12 +12,14 @@
  * the custom-settings registry in sync in both directions:
  *
  *  - At boot: zmk_animation_settings_apply_boot() is called by control.c
- *    from its existing init-animation delayed-work item (see
- *    animation_settings.h and control.c's init_animation_work_handler())
- *    rather than from a SYS_INIT/device init hook, to avoid a boot-ordering
- *    race against zmk-feature-custom-settings' own settings_load() (called
- *    from ZMK's main(), which runs after every SYS_INIT/DEVICE_DT_INST_DEFINE
- *    init level - see pmw3610_settings.c for the same trick applied there).
+ *    from its existing boot delayed-work item (see animation_settings.h and
+ *    control.c's animation_control_boot_work_handler()), scheduled
+ *    unconditionally (regardless of whether an init-animation is
+ *    configured, since this settings-apply must run either way) rather than
+ *    from a SYS_INIT/device init hook, to avoid a boot-ordering race against
+ *    zmk-feature-custom-settings' own settings_load() (called from ZMK's
+ *    main(), which runs after every SYS_INIT/DEVICE_DT_INST_DEFINE init
+ *    level - see pmw3610_settings.c for the same trick applied there).
  *  - At runtime: a zmk_custom_setting_changed listener re-applies all 5
  *    settings' current effective values into control state (VALUE_UPDATED /
  *    SAVED / DISCARDED / RESET all just mean "re-read and push", matching
@@ -147,32 +149,36 @@ static const struct zmk_custom_setting_constraint animation_settings_no_constrai
     {.type = ZMK_CUSTOM_SETTING_CONSTRAINT_NONE},
 };
 
-static const struct zmk_custom_setting_constraint animation_settings_brightness_powered_constraint[] = {
-    {.type = ZMK_CUSTOM_SETTING_CONSTRAINT_RANGE,
-     .range = {.min = {.type = ZMK_CUSTOM_SETTING_VALUE_TYPE_INT32, .int32_value = 0},
-               .max = {.type = ZMK_CUSTOM_SETTING_VALUE_TYPE_INT32,
-                       .int32_value = ANIMATION_SETTINGS_BRIGHTNESS_MAX}}},
+static const struct zmk_custom_setting_constraint
+    animation_settings_brightness_powered_constraint[] = {
+        {.type = ZMK_CUSTOM_SETTING_CONSTRAINT_RANGE,
+         .range = {.min = {.type = ZMK_CUSTOM_SETTING_VALUE_TYPE_INT32, .int32_value = 0},
+                   .max = {.type = ZMK_CUSTOM_SETTING_VALUE_TYPE_INT32,
+                           .int32_value = ANIMATION_SETTINGS_BRIGHTNESS_MAX}}},
 };
 
-static const struct zmk_custom_setting_constraint animation_settings_brightness_battery_constraint[] = {
-    {.type = ZMK_CUSTOM_SETTING_CONSTRAINT_RANGE,
-     .range = {.min = {.type = ZMK_CUSTOM_SETTING_VALUE_TYPE_INT32, .int32_value = 0},
-               .max = {.type = ZMK_CUSTOM_SETTING_VALUE_TYPE_INT32,
-                       .int32_value = ANIMATION_SETTINGS_BRIGHTNESS_MAX}}},
+static const struct zmk_custom_setting_constraint
+    animation_settings_brightness_battery_constraint[] = {
+        {.type = ZMK_CUSTOM_SETTING_CONSTRAINT_RANGE,
+         .range = {.min = {.type = ZMK_CUSTOM_SETTING_VALUE_TYPE_INT32, .int32_value = 0},
+                   .max = {.type = ZMK_CUSTOM_SETTING_VALUE_TYPE_INT32,
+                           .int32_value = ANIMATION_SETTINGS_BRIGHTNESS_MAX}}},
 };
 
-static const struct zmk_custom_setting_constraint animation_settings_animation_powered_constraint[] = {
-    {.type = ZMK_CUSTOM_SETTING_CONSTRAINT_RANGE,
-     .range = {.min = {.type = ZMK_CUSTOM_SETTING_VALUE_TYPE_INT32, .int32_value = 0},
-               .max = {.type = ZMK_CUSTOM_SETTING_VALUE_TYPE_INT32,
-                       .int32_value = ANIMATION_SETTINGS_POWERED_MAX}}},
+static const struct zmk_custom_setting_constraint
+    animation_settings_animation_powered_constraint[] = {
+        {.type = ZMK_CUSTOM_SETTING_CONSTRAINT_RANGE,
+         .range = {.min = {.type = ZMK_CUSTOM_SETTING_VALUE_TYPE_INT32, .int32_value = 0},
+                   .max = {.type = ZMK_CUSTOM_SETTING_VALUE_TYPE_INT32,
+                           .int32_value = ANIMATION_SETTINGS_POWERED_MAX}}},
 };
 
-static const struct zmk_custom_setting_constraint animation_settings_animation_battery_constraint[] = {
-    {.type = ZMK_CUSTOM_SETTING_CONSTRAINT_RANGE,
-     .range = {.min = {.type = ZMK_CUSTOM_SETTING_VALUE_TYPE_INT32, .int32_value = 0},
-               .max = {.type = ZMK_CUSTOM_SETTING_VALUE_TYPE_INT32,
-                       .int32_value = ANIMATION_SETTINGS_BATTERY_MAX}}},
+static const struct zmk_custom_setting_constraint
+    animation_settings_animation_battery_constraint[] = {
+        {.type = ZMK_CUSTOM_SETTING_CONSTRAINT_RANGE,
+         .range = {.min = {.type = ZMK_CUSTOM_SETTING_VALUE_TYPE_INT32, .int32_value = 0},
+                   .max = {.type = ZMK_CUSTOM_SETTING_VALUE_TYPE_INT32,
+                           .int32_value = ANIMATION_SETTINGS_BATTERY_MAX}}},
 };
 
 STRUCT_SECTION_ITERABLE(zmk_custom_setting, animation_setting_enabled) = {
@@ -304,12 +310,10 @@ static void apply_all(void) {
     applying = true;
 
     bool enabled = read_bool(ANIMATION_SETTINGS_KEY_ENABLED, true);
-    int32_t brightness_powered =
-        read_int32(ANIMATION_SETTINGS_KEY_BRIGHTNESS_POWERED,
-                  ANIMATION_SETTINGS_DEFAULT_BRIGHTNESS_POWERED);
-    int32_t brightness_battery =
-        read_int32(ANIMATION_SETTINGS_KEY_BRIGHTNESS_BATTERY,
-                  ANIMATION_SETTINGS_DEFAULT_BRIGHTNESS_BATTERY);
+    int32_t brightness_powered = read_int32(ANIMATION_SETTINGS_KEY_BRIGHTNESS_POWERED,
+                                            ANIMATION_SETTINGS_DEFAULT_BRIGHTNESS_POWERED);
+    int32_t brightness_battery = read_int32(ANIMATION_SETTINGS_KEY_BRIGHTNESS_BATTERY,
+                                            ANIMATION_SETTINGS_DEFAULT_BRIGHTNESS_BATTERY);
     int32_t animation_powered = read_int32(ANIMATION_SETTINGS_KEY_ANIMATION_POWERED, 0);
     int32_t animation_battery = read_int32(ANIMATION_SETTINGS_KEY_ANIMATION_BATTERY, 0);
 
@@ -352,40 +356,36 @@ void zmk_animation_settings_write_brightness_powered(uint8_t step) {
     if (applying) {
         return;
     }
-    zmk_custom_setting_write_by_key(ANIMATION_SETTINGS_SUBSYSTEM_ID,
-                                    ANIMATION_SETTINGS_KEY_BRIGHTNESS_POWERED,
-                                    &ZMK_CUSTOM_SETTING_VALUE_INT32(step),
-                                    ZMK_CUSTOM_SETTING_WRITE_MODE_MEMORY);
+    zmk_custom_setting_write_by_key(
+        ANIMATION_SETTINGS_SUBSYSTEM_ID, ANIMATION_SETTINGS_KEY_BRIGHTNESS_POWERED,
+        &ZMK_CUSTOM_SETTING_VALUE_INT32(step), ZMK_CUSTOM_SETTING_WRITE_MODE_MEMORY);
 }
 
 void zmk_animation_settings_write_brightness_battery(uint8_t step) {
     if (applying) {
         return;
     }
-    zmk_custom_setting_write_by_key(ANIMATION_SETTINGS_SUBSYSTEM_ID,
-                                    ANIMATION_SETTINGS_KEY_BRIGHTNESS_BATTERY,
-                                    &ZMK_CUSTOM_SETTING_VALUE_INT32(step),
-                                    ZMK_CUSTOM_SETTING_WRITE_MODE_MEMORY);
+    zmk_custom_setting_write_by_key(
+        ANIMATION_SETTINGS_SUBSYSTEM_ID, ANIMATION_SETTINGS_KEY_BRIGHTNESS_BATTERY,
+        &ZMK_CUSTOM_SETTING_VALUE_INT32(step), ZMK_CUSTOM_SETTING_WRITE_MODE_MEMORY);
 }
 
 void zmk_animation_settings_write_animation_powered(uint8_t index) {
     if (applying) {
         return;
     }
-    zmk_custom_setting_write_by_key(ANIMATION_SETTINGS_SUBSYSTEM_ID,
-                                    ANIMATION_SETTINGS_KEY_ANIMATION_POWERED,
-                                    &ZMK_CUSTOM_SETTING_VALUE_INT32(index),
-                                    ZMK_CUSTOM_SETTING_WRITE_MODE_MEMORY);
+    zmk_custom_setting_write_by_key(
+        ANIMATION_SETTINGS_SUBSYSTEM_ID, ANIMATION_SETTINGS_KEY_ANIMATION_POWERED,
+        &ZMK_CUSTOM_SETTING_VALUE_INT32(index), ZMK_CUSTOM_SETTING_WRITE_MODE_MEMORY);
 }
 
 void zmk_animation_settings_write_animation_battery(uint8_t index) {
     if (applying) {
         return;
     }
-    zmk_custom_setting_write_by_key(ANIMATION_SETTINGS_SUBSYSTEM_ID,
-                                    ANIMATION_SETTINGS_KEY_ANIMATION_BATTERY,
-                                    &ZMK_CUSTOM_SETTING_VALUE_INT32(index),
-                                    ZMK_CUSTOM_SETTING_WRITE_MODE_MEMORY);
+    zmk_custom_setting_write_by_key(
+        ANIMATION_SETTINGS_SUBSYSTEM_ID, ANIMATION_SETTINGS_KEY_ANIMATION_BATTERY,
+        &ZMK_CUSTOM_SETTING_VALUE_INT32(index), ZMK_CUSTOM_SETTING_WRITE_MODE_MEMORY);
 }
 
 /* --- runtime changed listener --------------------------------------------- */

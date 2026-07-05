@@ -164,10 +164,15 @@ arm-zephyr-eabi-gcc; see skills/zmk-module-dev pitfalls).
 
 Boot-apply ordering (the classic race): `settings_load()` runs from `main()`
 after all `SYS_INIT` levels and fires no changed-events. v2 therefore applies
-persisted values from the control module's existing delayed init step (the
-`init_animation_delay_ms` work item, default 100 ms — same trick as pmw3610's
-async-init apply: correct ordering by construction, not by priority tuning).
-Until that work item runs, the engine renders with DT/Kconfig defaults.
+persisted values from the control module's existing delayed boot work item
+(delay controlled by the `init-animation-delay-ms` DT property, default
+100 ms — same trick as pmw3610's async-init apply: correct ordering by
+construction, not by priority tuning). This work item (internally
+`boot_work` / `animation_control_boot_work_handler()` in control.c) is
+scheduled unconditionally at device init, regardless of whether an
+`init-animation` is configured — settings-apply must run on every boot, not
+just boots that also enqueue an init animation. Until that work item runs,
+the engine renders with DT/Kconfig defaults.
 
 Runtime changes from the generic custom-settings web UI arrive via the
 `zmk_custom_setting_changed` listener → re-apply into control state.

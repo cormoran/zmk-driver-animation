@@ -1,0 +1,2 @@
+zmk: animation settings test: seeded brightness_powered=4 before settings_load
+zmk: animation settings: apply enabled=1 brightness=4/2 animation=0/0
