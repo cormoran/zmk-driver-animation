@@ -132,7 +132,29 @@ static const struct zmk_animation_api animation_solid_api = {
     .is_finished = animation_solid_is_finished,
 };
 
+/*
+ * `transition_duration_frames` (below) is `duration * FPS / num_colors`,
+ * truncated by integer division. When `num_colors > 1` it is the divisor of
+ * `data->cycle_counter / config->transition_duration_frames` in
+ * `animation_solid_update_color()`; if `duration * FPS < num_colors` that
+ * division truncates to exactly 0, which turns the render-time divide into
+ * a division by zero on the very first frame. Catch the misconfiguration at
+ * build time instead of crashing on target hardware: when there's only one
+ * color, `transition_duration_frames` is never used (color cycling is
+ * skipped, see `animation_solid_render_frame()`), so the assert is
+ * short-circuited for that case.
+ */
+#define ANIMATION_SOLID_TRANSITION_DURATION_FRAMES(idx)                                            \
+    ((DT_INST_PROP(idx, duration) * CONFIG_ZMK_ANIMATION_FPS) / DT_INST_PROP_LEN(idx, colors))
+
 #define ANIMATION_SOLID_DEVICE(idx)                                                                \
+                                                                                                   \
+    BUILD_ASSERT(                                                                                  \
+        DT_INST_PROP_LEN(idx, colors) == 1 || ANIMATION_SOLID_TRANSITION_DURATION_FRAMES(idx) > 0, \
+        "zmk,animation-solid instance " #idx ": `duration` (in frames, i.e. duration_s * "         \
+        "CONFIG_ZMK_ANIMATION_FPS) must be >= the number of `colors`; raise `duration` or "        \
+        "lower the color count, or transition_duration_frames truncates to 0 and divides "         \
+        "by zero at render time");                                                                 \
                                                                                                    \
     static struct animation_solid_data animation_solid_##idx##_data;                               \
                                                                                                    \
@@ -146,8 +168,7 @@ static const struct zmk_animation_api animation_solid_api = {
         .colors = (struct zmk_color_hsl *)animation_solid_##idx##_colors,                          \
         .num_colors = DT_INST_PROP_LEN(idx, colors),                                               \
         .default_duration_frames = DT_INST_PROP(idx, duration) * CONFIG_ZMK_ANIMATION_FPS,         \
-        .transition_duration_frames = (DT_INST_PROP(idx, duration) * CONFIG_ZMK_ANIMATION_FPS) /   \
-                                      DT_INST_PROP_LEN(idx, colors),                               \
+        .transition_duration_frames = ANIMATION_SOLID_TRANSITION_DURATION_FRAMES(idx),             \
     };                                                                                             \
                                                                                                    \
     DEVICE_DT_INST_DEFINE(idx, &animation_solid_init, NULL, &animation_solid_##idx##_data,         \

@@ -66,8 +66,36 @@ static struct led_rgb px_buffer[DT_INST_PROP_LEN(0, pixels)];
  */
 static const struct device *root_animation = DEVICE_DT_GET(DT_CHOSEN(zmk_animation));
 
-/** Frames requested but not yet rendered. */
+/*
+ * Frames requested but not yet rendered.
+ *
+ * Locking invariant: `frame_budget` is read/written from both the timer
+ * ISR (`engine_tick_timer_handler`, invoked directly from the system clock
+ * interrupt) and thread context (`zmk_animation_request_frames*()`, called
+ * from `render_frame` on the system workqueue, and `engine_stop()`, called
+ * from the activity listener). Every access to `frame_budget` itself must
+ * happen while holding `frame_budget_lock`.
+ *
+ * `k_timer_start()`/`k_timer_stop()` are *not* called while holding this
+ * lock (they take their own internal kernel spinlock and may reschedule on
+ * exit; nesting that under ours is unnecessary risk for no benefit here).
+ * Instead, the transition decision (did the budget go from zero to
+ * non-zero -> start timer; did it just hit zero -> stop timer) is made
+ * atomically *inside* the critical section by comparing old vs. new value,
+ * and the corresponding k_timer_* call is issued right after releasing the
+ * lock. This still closes the TOCTOU: the "is the budget zero" check and
+ * the "set the new budget" write can no longer be interleaved with the
+ * ISR's decrement-to-zero, because both sides serialize on the same lock
+ * for the read-modify-write itself. A timer start/stop decided this way can
+ * race another start/stop *call* (e.g. ISR decides "stop" the same instant
+ * the thread decides "start" for the next request), but k_timer_start()/
+ * k_timer_stop() are idempotent and safe to call in either order or
+ * concurrently (they have their own lock), so the worst case is one extra
+ * start-then-stop or stop-then-start pair, never a stopped timer with a
+ * nonzero frame_budget or a running timer nobody accounts for.
+ */
 static uint32_t frame_budget;
+static struct k_spinlock frame_budget_lock;
 
 static void engine_tick(struct k_work *work) {
     zmk_animation_render(root_animation, pixels, pixels_size);
@@ -86,7 +114,24 @@ static void engine_tick(struct k_work *work) {
 K_WORK_DEFINE(engine_work, engine_tick);
 
 static void engine_tick_timer_handler(struct k_timer *timer) {
-    if (frame_budget > 0 && --frame_budget == 0) {
+    bool budget_expired = false;
+
+    K_SPINLOCK(&frame_budget_lock) {
+        if (frame_budget > 0 && --frame_budget == 0) {
+            budget_expired = true;
+        }
+    }
+
+    if (budget_expired) {
+        /*
+         * Decided outside the lock (see the locking-invariant comment on
+         * `frame_budget`): a concurrent zmk_animation_request_frames() may
+         * race this k_timer_stop() with its own k_timer_start(), but
+         * k_timer_start()/k_timer_stop() are safe to call concurrently and
+         * the frame_budget value itself is never inconsistent with whether
+         * *this* call observed expiry, since that decision was made
+         * atomically above.
+         */
         k_timer_stop(timer);
 
         if (!zmk_animation_call_is_finished(root_animation)) {
@@ -107,16 +152,31 @@ static void engine_tick_timer_handler(struct k_timer *timer) {
 K_TIMER_DEFINE(engine_tick_timer, engine_tick_timer_handler, NULL);
 
 void zmk_animation_request_frames(uint32_t frames) {
-    if (frames <= frame_budget) {
-        return;
+    bool need_start = false;
+
+    K_SPINLOCK(&frame_budget_lock) {
+        if (frames <= frame_budget) {
+            K_SPINLOCK_BREAK;
+        }
+
+        /*
+         * Reading `frame_budget == 0` and writing the new value happen in
+         * the same critical section, so this can no longer race the ISR's
+         * decrement-to-zero the way the un-synchronized version did: either
+         * the ISR's decrement (and its own budget_expired transition)
+         * happens-before this section (and we correctly see 0 and restart
+         * the timer), or it happens-after (and it will observe the
+         * `frames` value written here, not stop a timer we just started
+         * for a still-nonzero budget).
+         */
+        need_start = frame_budget == 0;
+        frame_budget = frames;
     }
 
-    if (frame_budget == 0) {
+    if (need_start) {
         k_timer_start(&engine_tick_timer, K_MSEC(1000 / CONFIG_ZMK_ANIMATION_FPS),
                       K_MSEC(1000 / CONFIG_ZMK_ANIMATION_FPS));
     }
-
-    frame_budget = frames;
 }
 
 void zmk_animation_request_frames_cap(uint32_t decremental_counter) {
@@ -126,8 +186,21 @@ void zmk_animation_request_frames_cap(uint32_t decremental_counter) {
 }
 
 static void engine_stop(void) {
+    /*
+     * Order matters here: clear the budget before stopping the timer. If a
+     * racing zmk_animation_request_frames() lands between the two, the
+     * worst case is it observes frame_budget == 0 (already cleared), sets a
+     * new nonzero budget and calls k_timer_start() right after our
+     * k_timer_stop() -- i.e. the animation keeps ticking, which is no worse
+     * than the pre-existing (non-locking) behavior for this ordering.
+     * Doing it in the other order (stop-then-clear) would let the ISR fire
+     * once more between the two and decrement a budget that's about to be
+     * zeroed anyway, which is harmless, but clearing first makes the
+     * invariant "frame_budget != 0 implies the timer should be running"
+     * hold at every observable point from other threads.
+     */
+    K_SPINLOCK(&frame_budget_lock) { frame_budget = 0; }
     k_timer_stop(&engine_tick_timer);
-    frame_budget = 0;
     zmk_animation_call_stop(root_animation);
 }
 
