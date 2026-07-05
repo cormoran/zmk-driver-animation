@@ -23,6 +23,10 @@
 #include "overlay_queue.h"
 #include "power_policy.h"
 
+#if IS_ENABLED(CONFIG_ZMK_ANIMATION_CUSTOM_SETTINGS)
+#include "../settings/animation_settings.h"
+#endif
+
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
 /*
@@ -280,6 +284,27 @@ static const struct zmk_animation_api control_api = {
 
 /* --- public control.h API, used by behaviors / studio request_exec --- */
 
+/*
+ * Write-through-to-settings helper (DESIGN.md #3.5 scope item 4): a no-op
+ * when CONFIG_ZMK_ANIMATION_CUSTOM_SETTINGS is off, so every call site below
+ * stays a single unconditional-looking line rather than repeating an
+ * #if IS_ENABLED(...) at every mutation. Kept file-local since only this
+ * file's public API mutates control state.
+ */
+#if IS_ENABLED(CONFIG_ZMK_ANIMATION_CUSTOM_SETTINGS)
+#define ANIMATION_SETTINGS_WRITE_ENABLED(enabled) zmk_animation_settings_write_enabled(enabled)
+#define ANIMATION_SETTINGS_WRITE_BRIGHTNESS(powered, step)                                         \
+    ((powered) ? zmk_animation_settings_write_brightness_powered(step)                             \
+               : zmk_animation_settings_write_brightness_battery(step))
+#define ANIMATION_SETTINGS_WRITE_SELECT(powered, index)                                            \
+    ((powered) ? zmk_animation_settings_write_animation_powered(index)                             \
+               : zmk_animation_settings_write_animation_battery(index))
+#else
+#define ANIMATION_SETTINGS_WRITE_ENABLED(enabled)
+#define ANIMATION_SETTINGS_WRITE_BRIGHTNESS(powered, step)
+#define ANIMATION_SETTINGS_WRITE_SELECT(powered, index)
+#endif
+
 void zmk_animation_set_enabled(bool enabled) {
     if (control_dev == NULL || !device_is_ready(control_dev)) {
         LOG_WRN("animation control not ready, ignoring set_enabled");
@@ -296,13 +321,19 @@ void zmk_animation_set_enabled(bool enabled) {
     } else {
         control_stop(control_dev);
     }
+    ANIMATION_SETTINGS_WRITE_ENABLED(enabled);
+}
+
+static bool power_source_is_powered(enum zmk_animation_power_source power_source) {
+    struct animation_control_data *data = control_dev->data;
+    return power_source == ZMK_ANIMATION_POWER_SOURCE_POWERED ||
+           (power_source == ZMK_ANIMATION_POWER_SOURCE_CURRENT && data->last_powered);
 }
 
 static uint8_t *brightness_ref(enum zmk_animation_power_source power_source) {
     struct animation_control_data *data = control_dev->data;
-    bool powered = power_source == ZMK_ANIMATION_POWER_SOURCE_POWERED ||
-                   (power_source == ZMK_ANIMATION_POWER_SOURCE_CURRENT && data->last_powered);
-    return powered ? &data->brightness_powered : &data->brightness_battery;
+    return power_source_is_powered(power_source) ? &data->brightness_powered
+                                                 : &data->brightness_battery;
 }
 
 void zmk_animation_set_brightness_shift(int steps, enum zmk_animation_power_source power_source) {
@@ -311,6 +342,7 @@ void zmk_animation_set_brightness_shift(int steps, enum zmk_animation_power_sour
         return;
     }
     const struct animation_control_config *config = control_dev->config;
+    bool powered = power_source_is_powered(power_source);
     uint8_t *ref = brightness_ref(power_source);
 
     int current = *ref;
@@ -324,6 +356,7 @@ void zmk_animation_set_brightness_shift(int steps, enum zmk_animation_power_sour
     if (next != current) {
         LOG_INF("animation control: change brightness %d->%d", current, next);
         *ref = (uint8_t)next;
+        ANIMATION_SETTINGS_WRITE_BRIGHTNESS(powered, *ref);
     }
 }
 
@@ -333,15 +366,16 @@ void zmk_animation_set_brightness(uint8_t step, enum zmk_animation_power_source 
         return;
     }
     const struct animation_control_config *config = control_dev->config;
+    bool powered = power_source_is_powered(power_source);
     uint8_t *ref = brightness_ref(power_source);
     *ref = step > config->brightness_steps ? config->brightness_steps : step;
+    ANIMATION_SETTINGS_WRITE_BRIGHTNESS(powered, *ref);
 }
 
 static uint8_t *selected_ref(enum zmk_animation_power_source power_source, size_t *out_size) {
     const struct animation_control_config *config = control_dev->config;
     struct animation_control_data *data = control_dev->data;
-    bool powered = power_source == ZMK_ANIMATION_POWER_SOURCE_POWERED ||
-                   (power_source == ZMK_ANIMATION_POWER_SOURCE_CURRENT && data->last_powered);
+    bool powered = power_source_is_powered(power_source);
 
     if (powered) {
         *out_size = config->powered_animations_size;
@@ -359,6 +393,7 @@ void zmk_animation_select_shift(int index_offset, enum zmk_animation_power_sourc
     if (index_offset == 0) {
         return;
     }
+    bool powered = power_source_is_powered(power_source);
     size_t size;
     uint8_t *ref = selected_ref(power_source, &size);
     if (size == 0) {
@@ -376,6 +411,7 @@ void zmk_animation_select_shift(int index_offset, enum zmk_animation_power_sourc
      * this form) has no such substring and survives intact. */
     LOG_INF("animation control: shift index %d->%d", current, next);
     *ref = (uint8_t)next;
+    ANIMATION_SETTINGS_WRITE_SELECT(powered, *ref);
 
     refresh_base_animation(control_dev);
 }
@@ -385,6 +421,7 @@ void zmk_animation_select(uint8_t index, enum zmk_animation_power_source power_s
         LOG_WRN("animation control not ready, ignoring select");
         return;
     }
+    bool powered = power_source_is_powered(power_source);
     size_t size;
     uint8_t *ref = selected_ref(power_source, &size);
     if (size == 0) {
@@ -395,6 +432,7 @@ void zmk_animation_select(uint8_t index, enum zmk_animation_power_source power_s
         LOG_INF("animation control: select index %d->%d", *ref, next);
         *ref = next;
     }
+    ANIMATION_SETTINGS_WRITE_SELECT(powered, *ref);
 
     refresh_base_animation(control_dev);
 }
@@ -473,6 +511,26 @@ int zmk_animation_enqueue(const struct device *animation, bool cancelable, uint3
 
 static void init_animation_work_handler(struct k_work *work) {
     ARG_UNUSED(work);
+
+#if IS_ENABLED(CONFIG_ZMK_ANIMATION_CUSTOM_SETTINGS)
+    /*
+     * DESIGN.md #3.5: this delayed-work item (scheduled from
+     * animation_control_init() below, itself a POST_KERNEL device init) is
+     * the earliest safe point to read persisted custom settings.
+     * settings_load() only runs from ZMK's main(), strictly after every
+     * SYS_INIT/DEVICE_DT_INST_DEFINE init level (including this device's own
+     * POST_KERNEL init and custom-settings' APPLICATION-level default reset)
+     * - so applying here (rather than from animation_control_init() itself)
+     * is correct by construction, not by priority tuning. Verified empirically
+     * by tests/settings_apply (native_sim test seeding a persisted value and
+     * asserting the applied state after this work item fires).
+     *
+     * Applied before the init-animation is enqueued below so the init
+     * animation itself reflects the persisted enabled/selection state, not
+     * transient DT/Kconfig defaults.
+     */
+    zmk_animation_settings_apply_boot();
+#endif
 
     const struct animation_control_config *config = control_dev->config;
     if (config->init_animation == NULL) {

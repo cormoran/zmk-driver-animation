@@ -21,6 +21,15 @@ if(CONFIG_ZMK_ANIMATION)
         # did), so it is only compiled when BLE is present at all.
         target_sources(app PRIVATE src/animations/endpoint.c)
     endif()
+
+    if(CONFIG_ZMK_ANIMATION_CUSTOM_SETTINGS)
+        # Kconfig currently nests ZMK_ANIMATION_CUSTOM_SETTINGS inside
+        # `if ZMK_ANIMATION` (see Kconfig's note): control.h's public API
+        # this file calls only has a linkable definition (real or "no
+        # device" stub) inside control.c, which is only built in this
+        # `if(CONFIG_ZMK_ANIMATION)` block.
+        target_sources(app PRIVATE src/settings/animation_settings.c)
+    endif()
 endif()
 
 if(CONFIG_ZMK_ANIMATION_MOCK_LED_STRIP)
@@ -29,6 +38,10 @@ endif()
 
 if(CONFIG_ZMK_ANIMATION_LAYER_STATUS_SPLIT_TEST)
     target_sources(app PRIVATE src/split_test/layer_status_split_test.c)
+endif()
+
+if(CONFIG_ZMK_ANIMATION_SETTINGS_TEST)
+    target_sources(app PRIVATE src/test/animation_settings_test.c)
 endif()
 
 if(CONFIG_ZMK_ANIMATION_STUDIO_RPC)

@@ -17,6 +17,22 @@ config ZMK_ANIMATION_STUDIO_RPC
     bool "Enable animation feature custom Studio RPC"
     depends on ZMK_STUDIO
 
+config ZMK_ANIMATION_CUSTOM_SETTINGS
+    bool "Enable animation runtime settings via zmk-feature-custom-settings"
+    depends on ZMK_CUSTOM_SETTINGS
+    help
+      Registers the animation-control state (enabled, powered/battery
+      brightness, powered/battery animation selection) as custom settings
+      (subsystem "cormoran__animation"), readable/writable over the generic
+      custom-settings Studio RPC subsystem and persisted via the Zephyr
+      settings subsystem. NOTE: unlike the equivalent PMW3610 option, this
+      currently depends on CONFIG_ZMK_ANIMATION itself (nested in this
+      `if ZMK_ANIMATION` block): control.h's public API only has a "no
+      device" stub definition inside control.c, which is only compiled when
+      CONFIG_ZMK_ANIMATION=y (there is no standalone api_stub.c yet - see
+      DESIGN.md's Phase D note about adding one for the RPC layer). Revisit
+      this dependency once that stub is split out.
+
 config ZMK_ANIMATION_TRIGGER_MAX_PARALLELISM
     int "Maximum number of simultaneously-triggered behavior-animations slots"
     default 10
@@ -51,6 +67,20 @@ config ZMK_ANIMATION_LAYER_STATUS_SPLIT_TEST
       on_keymap_binding_pressed/released behavior-invocation path end to
       end, not just the internal zmk_animation_layer_status_set_status()
       call it wraps.
+
+config ZMK_ANIMATION_SETTINGS_TEST
+    bool "Enable native_sim-only custom-settings persistence test hook"
+    depends on ZMK_ANIMATION_CUSTOM_SETTINGS
+    help
+      Adds a fake settings backend (see tests/settings_apply) that seeds a
+      persisted, non-default value for one animation setting before ZMK's
+      main() calls settings_load(), so the test can assert that
+      animation-control's boot-time settings-apply step (control.c's
+      init-animation delayed work, DESIGN.md #3.5) picks up the persisted
+      value rather than the devicetree/Kconfig default - proving the
+      boot-ordering fix (this file's SYS_INIT runs at APPLICATION priority
+      99, before ZMK's main()/settings_load(), mirroring
+      zmk-feature-custom-settings' own CONFIG_ZMK_CUSTOM_SETTINGS_TEST).
 
 endif
 
