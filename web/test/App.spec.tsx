@@ -21,7 +21,7 @@ describe("App Component", () => {
       expect(
         screen.getByRole("heading", { name: /zmk-driver-animation/i })
       ).toBeInTheDocument();
-      expect(screen.getByText(/Custom Studio RPC Demo/i)).toBeInTheDocument();
+      expect(screen.getByText(/LED animation control/i)).toBeInTheDocument();
     });
 
     it("should render connection button when disconnected", () => {
@@ -46,7 +46,7 @@ describe("App Component", () => {
       mocks = setupZMKMocks();
     });
 
-    it("should connect to device when connect button is clicked", async () => {
+    it("should connect to device and render the animation panel", async () => {
       mocks.mockSuccessfulConnection({
         deviceName: "Test Keyboard",
         subsystems: ["cormoran__animation"],
@@ -71,7 +71,9 @@ describe("App Component", () => {
       });
 
       expect(screen.getByText(/Disconnect/i)).toBeInTheDocument();
-      expect(screen.getByText(/RPC Test/i)).toBeInTheDocument();
+      expect(
+        screen.getByRole("heading", { name: /^Animation$/i })
+      ).toBeInTheDocument();
     });
   });
 });

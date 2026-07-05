@@ -20,7 +20,11 @@
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
-    "erasableSyntaxOnly": true,
+    // NOTE: erasableSyntaxOnly deliberately disabled (unlike the module
+    // template default) -- ts-proto emits real `enum` declarations (not
+    // erasable-only syntax) for animation.proto's PowerSource/TriggerMode
+    // enums (proto/cormoran/animation/animation.proto, Phase D). Mirrors the
+    // same fix in zmk-driver-pmw3610-with-custom-studio-rpc/web/tsconfig.app.json.
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true
   },
