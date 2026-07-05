@@ -1,10 +1,10 @@
-config ZMK_TEMPLATE_FEATURE
-    bool "Enable template feature"
+config ZMK_ANIMATION
+    bool "Enable animation feature"
 
-if ZMK_TEMPLATE_FEATURE
+if ZMK_ANIMATION
 
-config ZMK_TEMPLATE_FEATURE_STUDIO_RPC
-    bool "Enable template feature custom Studio RPC"
+config ZMK_ANIMATION_STUDIO_RPC
+    bool "Enable animation feature custom Studio RPC"
     depends on ZMK_STUDIO
 
 endif

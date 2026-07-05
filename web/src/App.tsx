@@ -6,15 +6,15 @@ import {
   ZMKCustomSubsystem,
   ZMKAppContext,
 } from "@cormoran/zmk-studio-react-hook";
-import { Request, Response } from "./proto/your-name/template/template";
+import { Request, Response } from "./proto/cormoran/animation/animation";
 
-export const SUBSYSTEM_IDENTIFIER = "your_name__template";
+export const SUBSYSTEM_IDENTIFIER = "cormoran__animation";
 
 function App() {
   return (
     <div className="app">
       <header className="app-header">
-        <h1>🔧 ZMK Module Template</h1>
+        <h1>🔧 zmk-driver-animation</h1>
         <p>Custom Studio RPC Demo</p>
       </header>
 
@@ -57,7 +57,8 @@ function App() {
 
       <footer className="app-footer">
         <p>
-          <strong>Template Module</strong> - Customize this for your ZMK module
+          <strong>zmk-driver-animation</strong> - Customize this for your ZMK
+          module
         </p>
       </footer>
     </div>
@@ -121,7 +122,7 @@ export function RPCTestSection() {
         <div className="warning-message">
           <p>
             ⚠️ Subsystem "{SUBSYSTEM_IDENTIFIER}" not found. Make sure your
-            firmware includes the template module.
+            firmware includes the animation module.
           </p>
         </div>
       </section>

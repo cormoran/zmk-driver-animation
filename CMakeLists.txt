@@ -1,8 +1,8 @@
 zephyr_include_directories(include)
-if(CONFIG_ZMK_TEMPLATE_FEATURE)
+if(CONFIG_ZMK_ANIMATION)
     # target_sources(app PRIVATE ...)
 
-    if(CONFIG_ZMK_TEMPLATE_FEATURE_STUDIO_RPC)
+    if(CONFIG_ZMK_ANIMATION_STUDIO_RPC)
         file(GLOB_RECURSE C_FILES ${CMAKE_CURRENT_SOURCE_DIR}/src/*.c)
         target_sources(app PRIVATE ${C_FILES})
 

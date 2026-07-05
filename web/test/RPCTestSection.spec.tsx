@@ -55,11 +55,11 @@ describe("RPCTestSection Component", () => {
       );
 
       expect(
-        screen.getByText(/Subsystem "your_name__template" not found/i)
+        screen.getByText(/Subsystem "cormoran__animation" not found/i)
       ).toBeInTheDocument();
       expect(
         screen.getByText(
-          /Make sure your firmware includes the template module/i
+          /Make sure your firmware includes the animation module/i
         )
       ).toBeInTheDocument();
     });

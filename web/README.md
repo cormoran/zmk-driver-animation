@@ -1,4 +1,4 @@
-# ZMK Module Template - Web Frontend
+# zmk-driver-animation - Web Frontend
 
 This is a minimal web application template for interacting with ZMK firmware
 modules that implement custom Studio RPC subsystems.
@@ -38,8 +38,8 @@ src/
 ├── App.tsx               # Main application with connection UI
 ├── App.css               # Styles
 └── proto/                # Generated protobuf TypeScript types
-    └── your-name/template/
-        └── template.ts
+    └── cormoran/animation/
+        └── animation.ts
 
 test/
 ├── App.spec.tsx              # Tests for App component
@@ -50,7 +50,7 @@ test/
 
 ### 1. Protocol Definition
 
-The protobuf schema is defined in `../proto/your-name/template/template.proto`.
+The protobuf schema is defined in `../proto/cormoran/animation/animation.proto`.
 
 ### 2. Code Generation
 
@@ -73,7 +73,7 @@ import { useZMKApp, ZMKCustomSubsystem } from "@cormoran/zmk-studio-react-hook";
 const { state, connect, findSubsystem, isConnected } = useZMKApp();
 
 // Find your subsystem
-const subsystem = findSubsystem("your_name__template");
+const subsystem = findSubsystem("cormoran__animation");
 
 // Create service and make RPC calls
 const service = new ZMKCustomSubsystem(state.connection, subsystem.index);
@@ -105,7 +105,7 @@ import {
 
 const mockZMKApp = createConnectedMockZMKApp({
   deviceName: "Test Device",
-  subsystems: ["your_name__template"],
+  subsystems: ["cormoran__animation"],
 });
 
 render(
@@ -119,7 +119,7 @@ render(
 
 To adapt this template for your own ZMK module:
 
-1. **Update the proto file**: Modify `../proto/your-name/template/template.proto` with
+1. **Update the proto file**: Modify `../proto/cormoran/animation/animation.proto` with
    your message types
 2. **Regenerate types**: Run `npm run generate`
 3. **Update subsystem identifier**: Change `SUBSYSTEM_IDENTIFIER` in `App.tsx`

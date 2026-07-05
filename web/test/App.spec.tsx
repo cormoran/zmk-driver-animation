@@ -18,7 +18,9 @@ describe("App Component", () => {
     it("should render the application header", () => {
       render(<App />);
 
-      expect(screen.getByText(/ZMK Module Template/i)).toBeInTheDocument();
+      expect(
+        screen.getByRole("heading", { name: /zmk-driver-animation/i })
+      ).toBeInTheDocument();
       expect(screen.getByText(/Custom Studio RPC Demo/i)).toBeInTheDocument();
     });
 
@@ -31,7 +33,9 @@ describe("App Component", () => {
     it("should render footer", () => {
       render(<App />);
 
-      expect(screen.getByText(/Template Module/i)).toBeInTheDocument();
+      expect(
+        screen.getByText(/zmk-driver-animation/i, { selector: "strong" })
+      ).toBeInTheDocument();
     });
   });
 
@@ -45,7 +49,7 @@ describe("App Component", () => {
     it("should connect to device when connect button is clicked", async () => {
       mocks.mockSuccessfulConnection({
         deviceName: "Test Keyboard",
-        subsystems: ["your_name__template"],
+        subsystems: ["cormoran__animation"],
       });
 
       const { connect: serial_connect } =

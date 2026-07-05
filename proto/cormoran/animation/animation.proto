@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package your_name.template;
+package cormoran.animation;
 
 message SampleRequest { int32 value = 1; }
 

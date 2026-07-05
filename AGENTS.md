@@ -1,38 +1,5 @@
 This repository contains a ZMK module with Web UI using the **unofficial** custom ZMK Studio RPC protocol.
 
-## Initialization (first time only)
-
-Delete this whole section when step 5 below is done.
-
-When creating a new repository from this template, use the
-`zmk-module-from-template` skill at `skills/zmk-module-from-template/`
-(creates the GitHub repo, rewires remotes, pushes `main`, creates the
-implementation branch). Then, inside the new repository, run the
-initialization script — do **not** rename placeholders by hand:
-
-```
-python3 scripts/init_module.py --namespace <your-github-name> --module <feature-name>
-```
-
-It replaces every template placeholder (identifiers, paths, URLs, artifact
-names), renames the placeholder files, and verifies nothing is left. If it
-reports leftovers, fix exactly those lines and re-run
-`python3 scripts/init_module.py --verify-only` until it prints OK.
-
-Then, in order:
-
-1. Rewrite `README.md` for your module (description and Module User Guide;
-   fix the west.yml example remotes if the GitHub owner is not `cormoran`).
-2. Review Kconfig prompts and web UI texts — the script renames them
-   mechanically; make them read naturally.
-3. Run `python3 -m unittest`. It must pass.
-4. Run `cd web && npm ci && npm run generate && npm test && npm run build`.
-   It must pass.
-5. Remove this "Initialization" section from AGENTS.md (CLAUDE.md is a
-   symlink — never edit it separately). After removal, pre-commit fails if
-   any placeholder re-appears.
-6. Commit the result before implementing features.
-
 ## Dev Rules
 
 - When designing a new module or a major feature (writing DESIGN.md), read
