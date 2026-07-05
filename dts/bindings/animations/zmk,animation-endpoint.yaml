@@ -1,0 +1,53 @@
+# Copyright (c) 2020, The ZMK Contributors
+# SPDX-License-Identifier: MIT
+
+description: |
+  Animation for displaying endpoint status (BLE connection status & USB).
+  Central and split-peripheral roles render differently (DESIGN.md #3.8):
+  central shows per-BLE-profile status plus USB; peripheral shows only the
+  central-connection status.
+compatible: "zmk,animation-endpoint"
+include: animation_base.yaml
+
+properties:
+  duration-seconds-on-endpoint-change:
+    type: int
+    default: 1
+    description: |
+      Animation duration in seconds when the endpoint changes. Extended to
+      not-connected-duration-seconds if the current BLE profile is not
+      connected. 0 disables playing on endpoint change.
+  not-connected-duration-seconds:
+    type: int
+    default: 5
+    description: |
+      Duration in seconds while the current profile/central is not
+      connected.
+  blink-duration-seconds:
+    type: int
+    default: 1
+    description: |
+      Duration in seconds for one blink cycle.
+  extend-duration-seconds:
+    type: int
+    default: 2
+    description: |
+      Duration to extend by if BLE status changes while already playing.
+  event-handling-start-seconds:
+    type: int
+    default: 2
+    description: |
+      Ignore endpoint-change events during this many seconds after boot
+      (avoids an animation burst while BLE/USB settle at startup).
+  color-open:
+    type: int
+    required: true
+  color-connected:
+    type: int
+    required: true
+  color-disconnected:
+    type: int
+    required: true
+  color-usb:
+    type: int
+    required: true

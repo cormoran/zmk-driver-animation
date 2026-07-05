@@ -1,0 +1,36 @@
+# Copyright (c) 2020, The ZMK Contributors
+# SPDX-License-Identifier: MIT
+
+description: |
+  Animation for active layer status: pixels[i] lights up when layer[i +
+  layer-offset] is active. On a split keyboard, the central computes the
+  layer bitmask and relays it to the peripheral via the `animls` behavior
+  (a quarantined transport hack, DESIGN.md #3.7/#3.8 - not an RPC/settings
+  concern).
+
+compatible: "zmk,animation-layer-status"
+include: animation_base.yaml
+
+properties:
+  default-color:
+    type: int
+    description: |
+      HSL color (packed via the HSL() macro) used for an active layer that
+      has no per-layer color in `colors` (or whose color is all-zero).
+  colors:
+    type: array
+    description: |
+      Per-layer HSL colors. A layer uses `default-color` if this array is
+      too short to cover it, or its entry is all-zero.
+  layer-offset:
+    type: int
+    default: 0
+    description: |
+      Maps layer i to pixels[i - layer-offset], so a split board can spread
+      layer indicators across both halves' LEDs.
+  extend-duration-seconds:
+    type: int
+    default: 2
+    description: |
+      Duration to extend the animation by if the layer status changes while
+      it is already playing.

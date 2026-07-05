@@ -1,0 +1,71 @@
+#include "../test.dtsi"
+#include <dt-bindings/zmk/keys.h>
+#include <dt-bindings/zmk/kscan_mock.h>
+#include <zmk_driver_animation/animation.dtsi>
+#include <dt-bindings/zmk_driver_animation/animation_control.h>
+
+/*
+ * Smoke test for zmk,animation-layer-status, central-side rendering. The
+ * mock LED driver only logs pixels[0] (see src/mock_led_strip.c), so this
+ * test maps the single observable pixel to *layer 1* specifically via
+ * `layer-offset = <1>` (pixels[0] <- layer[0 + 1]): it stays black while
+ * only the (always-active) default layer is on, and turns green while
+ * &mo 1 holds layer 1 active.
+ */
+
+/ {
+    mock_led_strip0: mock_led_strip_0 {
+        compatible = "zmk,mock-led-strip";
+        chain-length = <1>;
+    };
+
+    animation: animation {
+        compatible = "zmk,animation";
+        drivers = <&mock_led_strip0>;
+        chain-lengths = <1>;
+        pixels = <&pixel 0 0>;
+    };
+
+    animation_layer_status0: animation_layer_status_0 {
+        compatible = "zmk,animation-layer-status";
+        pixels = <0>;
+        default-color = <HSL(0, 0, 100)>;
+        colors = <HSL(0, 100, 50) HSL(120, 100, 50)>;
+        layer-offset = <1>;
+    };
+
+    animation_control0: animation_control_0 {
+        compatible = "zmk,animation-control";
+        powered-animations = <&animation_layer_status0>;
+        battery-animations = <&animation_layer_status0>;
+        behavior-animations = <&animation_layer_status0>;
+    };
+
+    chosen {
+        zmk,animation = &animation_control0;
+        zmk,animation-control = &animation_control0;
+    };
+
+    keymap {
+        compatible = "zmk,keymap";
+
+        default_layer {
+            bindings = <
+            &mo 1
+            >;
+        };
+
+        layer_one {
+            bindings = <
+            &trans
+            >;
+        };
+    };
+};
+
+&kscan {
+    events = <
+    ZMK_MOCK_PRESS(0,0,300)
+    ZMK_MOCK_RELEASE(0,0,300)
+    >;
+};

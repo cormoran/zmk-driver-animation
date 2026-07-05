@@ -1,0 +1,64 @@
+#include "../test.dtsi"
+#include <dt-bindings/zmk/keys.h>
+#include <dt-bindings/zmk/kscan_mock.h>
+#include <zmk_driver_animation/animation.dtsi>
+#include <dt-bindings/zmk_driver_animation/animation_control.h>
+
+/*
+ * Smoke test for zmk,animation-endpoint (central variant - the default
+ * role without CONFIG_ZMK_SPLIT). Exercises the BLE-profile-status render
+ * path at boot (profile 0 starts "open"/unpaired).
+ */
+
+/ {
+    mock_led_strip0: mock_led_strip_0 {
+        compatible = "zmk,mock-led-strip";
+        chain-length = <3>;
+    };
+
+    animation: animation {
+        compatible = "zmk,animation";
+        drivers = <&mock_led_strip0>;
+        chain-lengths = <3>;
+        pixels = <&pixel 0 0>, <&pixel 1 0>, <&pixel 2 0>;
+    };
+
+    animation_endpoint: animation_endpoint {
+        compatible = "zmk,animation-endpoint";
+        pixels = <0 1 2>;
+        color-open = <HSL(60, 100, 50)>;
+        color-connected = <HSL(120, 100, 50)>;
+        color-disconnected = <HSL(0, 100, 50)>;
+        color-usb = <HSL(240, 100, 50)>;
+        event-handling-start-seconds = <0>;
+    };
+
+    animation_control0: animation_control_0 {
+        compatible = "zmk,animation-control";
+        powered-animations = <&animation_endpoint>;
+        battery-animations = <&animation_endpoint>;
+        behavior-animations = <&animation_endpoint>;
+    };
+
+    chosen {
+        zmk,animation = &animation_control0;
+        zmk,animation-control = &animation_control0;
+    };
+
+    keymap {
+        compatible = "zmk,keymap";
+
+        default_layer {
+            bindings = <
+            &kp A
+            >;
+        };
+    };
+};
+
+&kscan {
+    events = <
+    ZMK_MOCK_PRESS(0,0,300)
+    ZMK_MOCK_RELEASE(0,0,300)
+    >;
+};

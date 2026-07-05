@@ -1,0 +1,46 @@
+# Copyright (c) 2020, The ZMK Contributors
+# SPDX-License-Identifier: MIT
+
+description: |
+  Breathing bar-graph of the current battery percentage, plus a low-battery
+  alert enqueued as an ad-hoc overlay through control.h (DESIGN.md - not a
+  bespoke mechanism).
+compatible: "zmk,animation-battery-status"
+include: animation_base.yaml
+
+properties:
+  animation-duration-seconds:
+    type: int
+    default: 1
+    description: |
+      Duration in seconds of one breathing cycle.
+  color-high:
+    type: int
+    required: true
+  color-middle:
+    type: int
+    required: true
+  color-low:
+    type: int
+    required: true
+  low-alert-start-threshold:
+    type: int
+    default: 10
+    description: |
+      Battery percentage below which the low-battery alert starts firing.
+  low-alert-stop-threshold:
+    type: int
+    default: 5
+    description: |
+      Battery percentage below which the low-battery alert stops firing
+      (to avoid draining the battery further with the alert itself).
+  low-alert-interval-seconds:
+    type: int
+    default: 60
+    description: |
+      Minimum time between low-battery alert overlays.
+  low-alert-duration-ms:
+    type: int
+    default: 10
+    description: |
+      Duration of the low-battery alert overlay in milliseconds.

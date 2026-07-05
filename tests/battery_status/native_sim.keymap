@@ -1,0 +1,67 @@
+#include "../test.dtsi"
+#include <dt-bindings/zmk/keys.h>
+#include <dt-bindings/zmk/kscan_mock.h>
+#include <zmk_driver_animation/animation.dtsi>
+#include <dt-bindings/zmk_driver_animation/animation_control.h>
+
+/*
+ * Smoke test for zmk,animation-battery-status: without a real battery
+ * sensor/zmk,battery chosen node, native_sim's zmk_battery_state_of_charge()
+ * always returns 0, so this only exercises the breathing bar-graph render
+ * path (the "default"/off color at 0%), not the low-battery alert - that
+ * needs a real zmk_battery_state_changed event with a nonzero level
+ * transition, which native_sim can't produce without hardware. See
+ * DESIGN.md follow-up: revisit if a mock battery sensor becomes available.
+ */
+
+/ {
+    mock_led_strip0: mock_led_strip_0 {
+        compatible = "zmk,mock-led-strip";
+        chain-length = <2>;
+    };
+
+    animation: animation {
+        compatible = "zmk,animation";
+        drivers = <&mock_led_strip0>;
+        chain-lengths = <2>;
+        pixels = <&pixel 0 0>, <&pixel 1 0>;
+    };
+
+    animation_battery: animation_battery {
+        compatible = "zmk,animation-battery-status";
+        pixels = <0 1>;
+        color-high = <HSL(120, 100, 50)>;
+        color-middle = <HSL(60, 100, 50)>;
+        color-low = <HSL(0, 100, 50)>;
+        animation-duration-seconds = <1>;
+    };
+
+    animation_control0: animation_control_0 {
+        compatible = "zmk,animation-control";
+        powered-animations = <&animation_battery>;
+        battery-animations = <&animation_battery>;
+        behavior-animations = <&animation_battery>;
+    };
+
+    chosen {
+        zmk,animation = &animation_control0;
+        zmk,animation-control = &animation_control0;
+    };
+
+    keymap {
+        compatible = "zmk,keymap";
+
+        default_layer {
+            bindings = <
+            &kp A
+            >;
+        };
+    };
+};
+
+&kscan {
+    events = <
+    ZMK_MOCK_PRESS(0,0,300)
+    ZMK_MOCK_RELEASE(0,0,300)
+    >;
+};

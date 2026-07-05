@@ -1,0 +1,33 @@
+# Copyright (c) 2025, cormoran
+# SPDX-License-Identifier: MIT
+
+description: |
+  Static (DT-defined) composition of child animations, played either in
+  parallel or sequentially. See control/overlay_queue.c for the *runtime*
+  ad-hoc sequencing mechanism (DESIGN.md #3.3) - this node is for a fixed
+  composition known at devicetree-authoring time.
+
+compatible: "zmk,animation-compose"
+
+properties:
+  animations:
+    type: phandles
+    required: true
+    description: |
+      Child animations to compose.
+
+  durations-ms:
+    type: array
+    required: true
+    description: |
+      Duration of each child animation in milliseconds, same order as
+      `animations`. For a parallel composition, each duration is
+      additionally capped by `start()`'s request_duration_ms when one is
+      given.
+
+  parallel:
+    type: boolean
+    description: |
+      If true, all children play in parallel; the composition finishes when
+      all children finish. If false (default), children play sequentially
+      in DT order; the composition finishes when the last one finishes.

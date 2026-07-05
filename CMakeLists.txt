@@ -6,9 +6,18 @@ if(CONFIG_ZMK_ANIMATION)
     target_sources(app PRIVATE src/core/render.c)
     target_sources(app PRIVATE src/animations/solid.c)
     target_sources(app PRIVATE src/animations/null.c)
+    target_sources(app PRIVATE src/animations/compose.c)
+    target_sources(app PRIVATE src/animations/battery_status.c)
+    target_sources(app PRIVATE src/animations/layer_status.c)
     target_sources(app PRIVATE src/control/control.c)
     target_sources(app PRIVATE src/control/overlay_queue.c)
     target_sources(app PRIVATE src/control/power_policy.c)
+
+    if(CONFIG_ZMK_BLE)
+        # endpoint.c includes <zephyr/bluetooth/*.h> unconditionally (as v1
+        # did), so it is only compiled when BLE is present at all.
+        target_sources(app PRIVATE src/animations/endpoint.c)
+    endif()
 endif()
 
 if(CONFIG_ZMK_ANIMATION_MOCK_LED_STRIP)
