@@ -1,81 +1,82 @@
-# zmk-driver-animation - Web Frontend
+# zmk-driver-animation — Web UI
 
-This is a minimal web application template for interacting with ZMK firmware
-modules that implement custom Studio RPC subsystems.
+A [ZMK Studio](https://zmk.dev/docs/features/studio) web app for controlling
+the `zmk-driver-animation` LED animation module live over its custom Studio RPC
+subsystem (`cormoran__animation`). Connect a keyboard running animation
+firmware and adjust it from the browser — no reflash needed.
 
 ## Features
 
-- **Device Connection**: Connect to ZMK devices via Bluetooth (GATT) or Serial
-- **Custom RPC**: Communicate with your custom firmware module using protobuf
-- **React + TypeScript**: Modern web development with Vite for fast builds
-- **react-zmk-studio**: Uses the `@cormoran/zmk-studio-react-hook` library for
-  simplified ZMK integration
+- **Device connection**: Connects to the keyboard over **Serial** (WebSerial)
+  through ZMK Studio. (BLE is not wired up in this app.)
+- **Live control**: View current state and set per-power-source (USB / battery)
+  brightness and base-animation selection, trigger overlay animations, and stop
+  the active overlay.
+- **Live updates**: Subscribes to the module's `state_changed` notification, so
+  changes made elsewhere (a keymap behavior, power-source switch) are reflected
+  without polling.
+- Built with **React + TypeScript + Vite** on the
+  [`@cormoran/zmk-studio-react-hook`](https://github.com/cormoran/react-zmk-studio)
+  library.
 
-## Quick Start
+The firmware must be built with `CONFIG_ZMK_STUDIO=y` and
+`CONFIG_ZMK_ANIMATION_STUDIO_RPC=y` (see the repo's top-level `README.md`).
+
+## Quick start
 
 ```bash
 # Install dependencies
-npm install
+npm ci
 
-# Generate TypeScript types from proto
+# Generate the TypeScript protobuf types from ../proto (required before first run)
 npm run generate
 
-# Run development server
+# Run the dev server
 npm run dev
 
 # Build for production
 npm run build
 
-# Run tests
+# Run tests / lint
 npm test
+npm run lint
 ```
 
-## Project Structure
+Open the dev server, click **Connect Serial**, and pick the keyboard's serial
+port when prompted.
+
+## Project structure
 
 ```
 src/
 ├── main.tsx              # React entry point
-├── App.tsx               # Main application with connection UI
+├── App.tsx               # Connection UI (ZMKConnection, serial transport)
+├── AnimationPanel.tsx    # The animation control panel (state, brightness, pickers, triggers)
 ├── App.css               # Styles
 └── proto/                # Generated protobuf TypeScript types
-    └── cormoran/animation/
-        └── animation.ts
+    └── cormoran/animation/animation.ts
 
-test/
-├── App.spec.tsx              # Tests for App component
-└── RPCTestSection.spec.tsx   # Tests for RPC functionality
+test/                     # Component + RPC tests
 ```
 
-## How It Works
+## How it works
 
-### 1. Protocol Definition
+### Protocol
 
-The protobuf schema is defined in `../proto/cormoran/animation/animation.proto`.
+The protobuf schema lives in `../proto/cormoran/animation/animation.proto`
+(shared with the firmware). `npm run generate` runs `buf generate` (config in
+`buf.gen.yaml`) to produce the TypeScript types under `src/proto/`.
 
-### 2. Code Generation
+### Talking to the firmware
 
-TypeScript types are generated using `ts-proto`:
-
-```bash
-npm run generate
-```
-
-This runs `buf generate` which uses the configuration in `buf.gen.yaml`.
-
-### 3. Using react-zmk-studio
-
-The app uses the `@cormoran/zmk-studio-react-hook` library:
+The app uses `@cormoran/zmk-studio-react-hook` to connect and find the
+animation subsystem by its identifier, then makes typed RPC calls:
 
 ```typescript
 import { useZMKApp, ZMKCustomSubsystem } from "@cormoran/zmk-studio-react-hook";
 
-// Connect to device
-const { state, connect, findSubsystem, isConnected } = useZMKApp();
-
-// Find your subsystem
+const { state, findSubsystem, isConnected } = useZMKApp();
 const subsystem = findSubsystem("cormoran__animation");
-
-// Create service and make RPC calls
 const service = new ZMKCustomSubsystem(state.connection, subsystem.index);
 const response = await service.callRPC(payload);
 ```
@@ -83,47 +84,11 @@ const response = await service.callRPC(payload);
 ## Testing
 
 ```bash
-# Run all tests
-npm test
-
-# Run tests in watch mode
-npm run test:watch
-
-# Run tests with coverage
-npm run test:coverage
+npm test                  # run once
+npm run test:watch        # watch mode
+npm run test:coverage     # with coverage
 ```
 
-### Writing Tests
-
-Use the test helpers from `@cormoran/zmk-studio-react-hook/testing`:
-
-```typescript
-import {
-  createConnectedMockZMKApp,
-  ZMKAppProvider,
-} from "@cormoran/zmk-studio-react-hook/testing";
-
-const mockZMKApp = createConnectedMockZMKApp({
-  deviceName: "Test Device",
-  subsystems: ["cormoran__animation"],
-});
-
-render(
-  <ZMKAppProvider value={mockZMKApp}>
-    <YourComponent />
-  </ZMKAppProvider>
-);
-```
-
-## Customization
-
-To adapt this template for your own ZMK module:
-
-1. **Update the proto file**: Modify `../proto/cormoran/animation/animation.proto` with
-   your message types
-2. **Regenerate types**: Run `npm run generate`
-3. **Update subsystem identifier**: Change `SUBSYSTEM_IDENTIFIER` in `App.tsx`
-   to match your firmware registration
-4. **Update RPC logic**: Modify the request/response handling in `App.tsx`
-5. **Update tests**: Modify tests to match your custom subsystem identifier and
-   functionality
+Tests use the mock helpers from `@cormoran/zmk-studio-react-hook/testing`
+(`createConnectedMockZMKApp`, `ZMKAppProvider`) so components can be exercised
+without real hardware.
