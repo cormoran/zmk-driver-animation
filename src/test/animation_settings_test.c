@@ -43,6 +43,7 @@
 #include <zephyr/logging/log.h>
 #include <zephyr/settings/settings.h>
 
+#include <cormoran/animation/control.h>
 #include <cormoran/zmk/custom_settings.h>
 #include <zmk/event_manager.h>
 
@@ -95,6 +96,54 @@ static struct settings_store animation_settings_test_store = {
 };
 
 /*
+ * Regression test for the notification-storm bug (hardware-confirmed root
+ * cause, see docs/design/hardware-validation.md and control.c's
+ * notify_suppressed comment): a single mutation that writes through to
+ * custom-settings re-enters animation_settings.c's apply_all() (via the
+ * zmk_custom_setting_changed listener below), which used to re-apply all 5
+ * settings through control.c's own setters - each calling
+ * notify_state_changed() again on top of this call's own, turning one
+ * mutation into 6 notifications and (on hardware) starving that mutation's
+ * own RPC Response frame. This runs early (from animation_settings_test_init()
+ * below, APPLICATION priority 99 - after custom_settings_init() at the
+ * default APPLICATION priority 90 has reset the registry to its defaults,
+ * but before ZMK's main() calls settings_load()) so the write-through ->
+ * changed-event -> apply_all() re-entrant chain is already fully wired and
+ * exercised, same as a real runtime RPC/behavior mutation would be.
+ *
+ * Any brightness value different from default-powered-brightness (2 in
+ * every native_sim.keymap under tests/settings_apply*, tests/
+ * settings_write_through) would prove the same point; 4 is arbitrary
+ * (matches ANIMATION_SETTINGS_TEST_SEEDED_VALUE above, purely for a memorable
+ * distinct number - the two are otherwise unrelated).
+ */
+/*
+ * Gated to tests/settings_write_through only: this hook performs a real
+ * brightness mutation, which would otherwise perturb the boot-apply
+ * snapshots in tests/settings_apply* that share this same test file.
+ */
+#if IS_ENABLED(CONFIG_ZMK_ANIMATION_NOTIFY_AMPLIFICATION_TEST)
+#define ANIMATION_SETTINGS_TEST_AMPLIFICATION_BRIGHTNESS 4
+
+static int animation_settings_test_notify_count;
+
+static void animation_settings_test_on_state_changed(void) {
+    animation_settings_test_notify_count++;
+}
+
+static void animation_settings_test_amplification(void) {
+    zmk_animation_set_state_changed_callback(animation_settings_test_on_state_changed);
+
+    int before = animation_settings_test_notify_count;
+    zmk_animation_set_brightness(ANIMATION_SETTINGS_TEST_AMPLIFICATION_BRIGHTNESS,
+                                 ZMK_ANIMATION_POWER_SOURCE_POWERED);
+    int fired = animation_settings_test_notify_count - before;
+
+    LOG_INF("animation settings test: amplification test: brightness change fired=%d", fired);
+}
+#endif /* CONFIG_ZMK_ANIMATION_NOTIFY_AMPLIFICATION_TEST */
+
+/*
  * Registers the fake backend at APPLICATION priority 99 - after
  * custom_settings_init() (APPLICATION, CONFIG_APPLICATION_INIT_PRIORITY,
  * which resets every registered zmk_custom_setting to its default and does
@@ -124,6 +173,9 @@ static int animation_settings_test_init(void) {
     settings_src_register(&animation_settings_test_store);
     LOG_INF("animation settings test: seeded brightness_powered=%d before settings_load",
             ANIMATION_SETTINGS_TEST_SEEDED_VALUE);
+#if IS_ENABLED(CONFIG_ZMK_ANIMATION_NOTIFY_AMPLIFICATION_TEST)
+    animation_settings_test_amplification();
+#endif
     return 0;
 }
 

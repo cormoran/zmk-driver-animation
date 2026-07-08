@@ -124,6 +124,22 @@ void zmk_animation_get_state(struct zmk_animation_state *out);
 typedef void (*zmk_animation_state_changed_cb_t)(void);
 void zmk_animation_set_state_changed_callback(zmk_animation_state_changed_cb_t callback);
 
+/**
+ * Suppresses (`true`)/re-enables (`false`) the state-changed callback
+ * registered above, without touching the registration itself. Intended for
+ * a bulk re-apply of several settings at once (animation_settings.c's
+ * apply_all(), triggered either at boot or re-entrantly whenever one of
+ * this module's own setters writes through to custom-settings) to emit at
+ * most one notification for the whole batch instead of one per setter
+ * call. Confirmed on hardware (docs/design/hardware-validation.md) that
+ * without this, a single Studio RPC mutation re-enters apply_all() and
+ * amplifies into a burst of state-changed notifications that floods the
+ * shared transport and starves that same RPC call's own Response frame.
+ * Not reentrant/nesting-aware - callers that bracket a scope with
+ * `true`/`false` must not call this from within another such scope.
+ */
+void zmk_animation_control_set_notify_suppressed(bool suppressed);
+
 /** Enable/disable animation rendering entirely (all power sources). */
 void zmk_animation_set_enabled(bool enabled);
 

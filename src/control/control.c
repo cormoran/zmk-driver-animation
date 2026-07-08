@@ -341,11 +341,40 @@ static const struct zmk_animation_api control_api = {
  */
 static zmk_animation_state_changed_cb_t state_changed_cb;
 
+/*
+ * Suppression flag for animation_settings.c's apply_all() bulk re-apply
+ * (hardware-confirmed root cause: see docs/design/hardware-validation.md's
+ * RPC-response-loss finding). A single Studio RPC mutation (e.g.
+ * SetBrightness) writes through to custom-settings, which synchronously
+ * raises zmk_custom_setting_changed, which re-enters this module's own
+ * changed-listener -> apply_all() -> re-applies all 5 settings via this
+ * file's setters (zmk_animation_select() x2, zmk_animation_set_brightness()
+ * x2, zmk_animation_set_enabled() x1). Without this flag, each of those 5
+ * setters (plus the originating setter's own call) calls
+ * notify_state_changed(), so one mutation floods the shared Studio
+ * transport with 6 state-changed notifications - starving the mutating
+ * call's own Response frame, which is confirmed on hardware to then never
+ * reach the host. Set by
+ * zmk_animation_control_set_notify_suppressed() around apply_all()'s bulk
+ * re-apply so that window emits zero notifications; the originating
+ * setter's own notify_state_changed() call (outside that window) still
+ * fires normally, so exactly one notification reaches the RPC/UI consumer
+ * per mutation.
+ */
+static bool notify_suppressed;
+
 void zmk_animation_set_state_changed_callback(zmk_animation_state_changed_cb_t callback) {
     state_changed_cb = callback;
 }
 
+void zmk_animation_control_set_notify_suppressed(bool suppressed) {
+    notify_suppressed = suppressed;
+}
+
 static void notify_state_changed(void) {
+    if (notify_suppressed) {
+        return;
+    }
     if (state_changed_cb != NULL) {
         state_changed_cb();
     }
@@ -912,5 +941,12 @@ void zmk_animation_get_state(struct zmk_animation_state *out) {
 void zmk_animation_set_state_changed_callback(zmk_animation_state_changed_cb_t callback) {
     ARG_UNUSED(callback);
 }
+
+/* No control device, so nothing ever notifies here - present only so
+ * animation_settings.c's apply_all() (built whenever
+ * CONFIG_ZMK_ANIMATION_CUSTOM_SETTINGS=y, regardless of whether a real
+ * zmk,animation-control node exists) links against a single definition of
+ * this symbol in every configuration. */
+void zmk_animation_control_set_notify_suppressed(bool suppressed) { ARG_UNUSED(suppressed); }
 
 #endif /* DT_HAS_COMPAT_STATUS_OKAY(DT_DRV_COMPAT) */

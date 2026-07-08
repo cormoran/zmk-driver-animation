@@ -1,1 +1,3 @@
+zmk: animation settings test: registry brightness_powered=4
+zmk: animation settings test: amplification test: brightness change fired=1
 zmk: animation settings test: registry brightness_battery=3

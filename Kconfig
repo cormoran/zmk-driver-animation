@@ -97,6 +97,21 @@ config ZMK_ANIMATION_SETTINGS_TEST
       99, before ZMK's main()/settings_load(), mirroring
       zmk-feature-custom-settings' own CONFIG_ZMK_CUSTOM_SETTINGS_TEST).
 
+config ZMK_ANIMATION_NOTIFY_AMPLIFICATION_TEST
+    bool "native_sim-only regression test for the state-changed notification storm"
+    depends on ZMK_ANIMATION_SETTINGS_TEST
+    help
+      Runs an extra hook in the shared animation-settings test init that
+      installs a counting state-changed callback, performs a single
+      zmk_animation_set_brightness() mutation, and logs how many
+      notifications fired. Guards the regression where a mutation re-enters
+      apply_all() and amplifies into a burst of state-changed notifications
+      (hardware-confirmed to starve that mutation's own RPC Response frame;
+      see docs/design/hardware-validation.md). Enabled only in
+      tests/settings_write_through, so the mutation it performs does not
+      perturb the boot-apply snapshots in tests/settings_apply* (which share
+      this same test hook).
+
 endif
 
 config ZMK_ANIMATION_MOCK_LED_STRIP

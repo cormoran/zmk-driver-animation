@@ -305,6 +305,21 @@ static bool applying;
  * are intentionally asymmetric: this function is the only settings ->
  * control path, and control.c's setters (outside of this guarded window)
  * are the only control -> settings path.
+ *
+ * The 5 setter calls below are additionally bracketed with
+ * zmk_animation_control_set_notify_suppressed() (hardware-confirmed root
+ * cause: docs/design/hardware-validation.md). Without it, every one of
+ * these 5 setters - re-entered here on top of the setter that originally
+ * triggered this re-apply - would call notify_state_changed(), turning one
+ * external mutation into a burst of state-changed notifications that
+ * floods the shared Studio transport and starves that same mutating call's
+ * own Response frame. Suppressing notifications for the duration of this
+ * function means: a runtime re-apply (triggered by some setter's own
+ * write-through) emits exactly the *one* notification that setter itself
+ * already sent before write-through was invoked - not 5 more on top; a
+ * boot-time apply (zmk_animation_settings_apply_boot(), not triggered by
+ * any setter) emits *none*, which is fine, since there is no RPC caller
+ * waiting on a response and no connected UI yet at boot to refresh.
  */
 static void apply_all(void) {
     applying = true;
@@ -324,11 +339,13 @@ static void apply_all(void) {
      * own field order (DESIGN.md #3.4) and ensures refresh_base_animation()
      * (called by select()) sees the final brightness/enabled values already
      * in place when it starts the base animation. */
+    zmk_animation_control_set_notify_suppressed(true);
     zmk_animation_select((uint8_t)animation_powered, ZMK_ANIMATION_POWER_SOURCE_POWERED);
     zmk_animation_select((uint8_t)animation_battery, ZMK_ANIMATION_POWER_SOURCE_BATTERY);
     zmk_animation_set_brightness((uint8_t)brightness_powered, ZMK_ANIMATION_POWER_SOURCE_POWERED);
     zmk_animation_set_brightness((uint8_t)brightness_battery, ZMK_ANIMATION_POWER_SOURCE_BATTERY);
     zmk_animation_set_enabled(enabled);
+    zmk_animation_control_set_notify_suppressed(false);
 
     applying = false;
 }
