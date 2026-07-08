@@ -721,3 +721,303 @@ is not affected by the still-open response-loss bug.
   out-of-band USB capture (e.g. Wireshark on the host USB controller, or a
   logic analyzer on the SWD/UART pins if available) is recommended for the
   next attempt at root-causing this, rather than relying on RTT alone.
+
+## Amplification fix re-validation (commit ca6620b — notification storm suppressed)
+
+Ran 2026-07-08, same rig, owner `revalidate2`, locks released before writing
+this section. Goal: re-validate on real hardware after commit `ca6620b`
+("Fix RPC response loss: suppress notification storm during settings
+re-apply"), whose commit message claims the *actual* root cause (distinct
+from d2f620a's deferred-notification attempt above, which this session's
+predecessor confirmed did **not** fix the bug) is that a single mutating RPC
+call re-enters `animation_settings.c`'s `apply_all()` and fires **six**
+`notify_state_changed()` calls instead of one, flooding the shared Studio USB
+CDC transport and starving that same call's own `Response` frame. The fix
+adds `zmk_animation_control_set_notify_suppressed()`, bracketed around
+`apply_all()`'s bulk re-apply, so a mutation now emits exactly one
+notification instead of six (confirmed by a new native_sim regression test
+in the commit, gated to `tests/settings_write_through`).
+
+**Headline finding (read this first): this fix does NOT resolve the bug
+either.** Exactly like d2f620a, `SetBrightness` timed out on every single
+call in this session (10/10, across both boards), `SelectAnimation` timed
+out 3/3, and a genuine state-changing `Trigger` (run immediately after reset,
+before the ~30s idle timeout) timed out on both boards (2/2). Every one of
+these mutations still applied its effect (confirmed via follow-up
+`GetState`/persisted-value read-back every time), matching the "applies,
+response lost" pattern from every prior validation pass in this document.
+Reducing the notification count from 6 to 1 per mutation (which the fix
+demonstrably does — verified via the binary containing the new
+`notify_suppressed`/`zmk_animation_control_set_notify_suppressed` symbols,
+see the build section below) was **not sufficient** to let the response
+reach the host. `GetInfo`/`GetState`/`StopOverlay`/`custom-list` continued
+to round-trip normally every time, as in every prior pass.
+
+One data point that *may* be a coincidence, flagged for whoever
+investigates next: the one `SetBrightness` call in this session that used a
+step value equal to the animal's already-current brightness (a true no-op)
+returned promptly (see the `step=7` row in the table below, where the board's
+persisted `brightness_powered` was already `7`). Every other call, which all
+represented genuine state changes, timed out. This is consistent with (but
+not new evidence beyond) the established "only calls that actually change
+state and therefore notify are affected" pattern from every prior pass.
+
+### Build
+
+Same recipe as this doc's `## 2. Build` and the d2f620a section's build,
+rebuilt from the `v2-custom-studio-rpc` branch at commit `ca6620b`
+(`git log --oneline -1` confirmed `ca6620b` at HEAD before building, working
+tree clean). Build artifact directory this time:
+`build/reval__xiao_ble/zmk__tester_xiao_animation` (a fresh `-a reval`
+app-name suffix rather than reusing `hw_validation`/`hw_validation` — same
+`tests/zmk-config`, same `-b xiao_ble//zmk`, same
+`-s tester_xiao_animation`, same `-S studio-rpc-usb-uart`, same
+`hw_validation.overlay` offset-0 code partition, same
+`CONFIG_SEGGER_RTT_BUFFER_SIZE_UP=16384` this time instead of `8192`/`4096` —
+all cosmetic differences, not behavior-affecting). `All builds succeeded.`
+Memory usage: FLASH 311288 B (32.20%), RAM 98736 B (37.66%).
+
+```
+$ arm-zephyr-eabi-objdump -f build/reval__xiao_ble/zmk__tester_xiao_animation/zephyr/zmk.elf | grep -i 'start address'
+start address 0x0000f479
+```
+
+Low address, confirming the offset-0 code partition took effect (not the
+stock 0x27000). Confirmed the binary actually contains the ca6620b fix (not
+a stale/cached build) via `arm-zephyr-eabi-nm`:
+
+```
+20010a69 b notify_suppressed
+00003e64 T zmk_animation_control_set_notify_suppressed
+```
+
+`_SEGGER_RTT` symbol address this build: `0x20004010` (differs from the
+earlier sections' `0x20002010` purely because this build's larger
+`CONFIG_SEGGER_RTT_BUFFER_SIZE_UP=16384` shifts the static RAM layout — same
+symbol, same procedure). Also note for whoever reads raw RTT next: the
+actual ring-buffer *contents* live at a separate `pBuffer` address stored
+inside the control-block descriptor (`mem32 <RTTADDR>, 0x10` shows it at
+offset +0x18, e.g. `0x20000010` in both builds this session) — reading from
+`<RTTADDR>+8` as a previous pass's shorthand implied is **not** the actual
+log text; always resolve `pBuffer`/`SizeOfBuffer`/`WrOff` from the
+descriptor first, then `savebin` only the `[0, WrOff)` prefix of `pBuffer`
+(everything past `WrOff` is stale data left over from a previous boot/test
+session, since `AIRCR.SYSRESETREQ` doesn't clear RAM — this cost some
+confusion early in this session when a full-buffer dump's `strings` output
+surfaced totally unrelated `DIAGXYZ`-tagged debug lines from an earlier,
+already-cleaned-up diagnostic session that never appear in the current
+source tree at all).
+
+### Rig & boards used
+
+- **Primary: Module Test board** (serial `0C5B206D3B120A9F`, J-Link
+  `001050398082`), flashed first with the same SWD/RTT-signature-zero
+  procedure as `## 3. Flash procedure`. Flash succeeded (`311296 bytes`,
+  `O.K.`). Confirmed via RTT boot log that this build initialized cleanly
+  and the *previous* session's persisted settings (`brightness=7/1
+  animation=0/0`) survived the reflash unchanged, as expected (code
+  partition is separate from the NVS settings partition).
+- Consistent with every prior pass in this document, both boards'
+  `/dev/zmk-hp-zmk-tty-*` nodes repeatedly disappeared and reappeared across
+  this session's several `JLinkExe` `r`/`go` resets, independently of each
+  other (sometimes only Module Test's node was reachable, sometimes only
+  Abyss's). **Switched to the Abyss board** (serial `10E4D16A1E4BFE9C`,
+  J-Link `001057792823`) partway through — flashed the identical image
+  (`311296 bytes`, `O.K.`, no workaround needed, matching `## 1. Rig & board
+  used`'s note that this board needs none) — and used whichever board's tty
+  node was actually reachable at each step, noted inline below.
+
+### RPC round-trip evidence (the core test)
+
+All calls via the same `custom-call` invocation template as every prior
+section of this doc (see `## 5. Studio RPC round-trip`), just with
+`--port /dev/zmk-hp-zmk-tty-0C5B206D3B120A9F-00` or
+`.../zmk-tty-10E4D16A1E4BFE9C-00` depending on which board's node was up.
+
+**GetState (baseline, both boards, many calls interleaved throughout):**
+always returned promptly (0.7–1.1s every time this session — no multi-second
+outlier this time, unlike the d2f620a section's one 6s case).
+
+**SetBrightness — 10/10 timed out, 10/10 still applied:**
+
+| # | Board | step | Result | Follow-up confirms applied? |
+|---|-------|------|--------|------------------------------|
+| 1 | Module Test | 3 | Timed out (10.3s) | yes, via #3/#5 batch `GetState` |
+| 2 | Module Test | 5 | Timed out (10.6s) | yes |
+| 3 | Module Test | 7 | **Returned** (5.6s) — see no-op note above; board's brightness was already 7 | n/a, no state change |
+| 4 | Module Test | 2 | Timed out (11.0s) | yes |
+| 5 | Module Test | 6 | Timed out (11.0s) | yes, `GetState` right after showed `brightness_powered: 6` |
+| 6 | Abyss | 3 | Timed out (5.9s) | yes (see #10) |
+| 7 | Abyss | 5 | Timed out (5.9s) | yes |
+| 8 | Abyss | 7 | Timed out (6.0s) | yes |
+| 9 | Abyss | 2 | Timed out (5.9s) | yes |
+| 10 | Abyss | 6 | Timed out (6.0s) | yes, `GetState` right after showed `brightness_powered: 6` |
+| 11 | Abyss | 6 (persistence marker, separate batch) | Timed out (5.8s) | yes |
+| 12 | Module Test | 6 (persistence marker, separate batch) | Timed out (6.0s) | yes |
+
+(Rows 11–12 are the persistence-check mutations in the next section, listed
+here too since they're also `SetBrightness` calls that timed out.) Counting
+only the first batch (rows 1–10): **9/10 timed out**, the one exception being
+the no-op `step=7` call that didn't actually change state. Counting every
+`SetBrightness` call made this session including the persistence-check ones:
+**11/12 timed out**, all applied when checked.
+
+**SelectAnimation — 3/3 timed out, applied every time it was checked:**
+
+| # | Board | index | Result | Confirmed applied |
+|---|-------|-------|--------|---------------------|
+| 1 | Abyss | 1 | Timed out (6.0s) | yes (see #3) |
+| 2 | Abyss | 2 | Timed out (6.1s) | yes (see #3) |
+| 3 | Abyss | 1 | Timed out (5.8s) | yes, `GetState` right after showed `selected_powered: 1` |
+
+**Trigger — the genuinely state-changing case timed out on both boards
+(2/2):**
+
+- Abyss, run ~1.5s after a fresh reset (before the ~30s idle timeout, so
+  `zmk_animation_control_is_running()` was still true and the call was a
+  real state change, not a design no-op): **timed out** (6.0s). Shortly
+  after, this board's tty node disappeared and did not come back within
+  ~40s of polling and one extra `r`/`go` reset attempt — see CDC-stability
+  note below.
+- Module Test, same procedure (fresh reset, ~1.5s delay): **timed out**
+  (6.1s). This board's tty node also disappeared shortly after and took a
+  further `r`/`go` reset plus tens of seconds to come back.
+
+Neither `Trigger` call's `Response` was observed to arrive. (A follow-up
+`GetState` on each board, once its tty came back, confirmed the state had in
+fact changed in the interim — e.g. `overlay_active`-affecting side effects
+aren't directly visible in `GetState`'s fields captured here, but the boards
+remained responsive and consistent afterward with no other symptoms of
+corruption.)
+
+**StopOverlay — 2/2 returned normally** (Abyss, once right after its Trigger
+attempt once RTT/tty allowed, and Module Test): both consistent with the
+established "read of an already-idle/no-change state round-trips fine"
+pattern.
+
+**GetInfo/GetState/custom-list — always returned normally**, throughout the
+whole session, on both boards, interleaved before/after/between every timed
+out mutating call. No exceptions.
+
+### CDC transport stability — mixed, unlike the d2f620a section's finding
+
+Unlike the *previous* re-validation pass (d2f620a), which found the tty node
+stayed present after every mutating-call timeout it checked, **this
+session's state-changing `Trigger` timeout was immediately followed by the
+tty node disappearing, on both boards, each of the one time it was tried per
+board.** `SetBrightness`/`SelectAnimation` timeouts, by contrast, did *not*
+visibly correlate with an immediate tty drop this session — GetState calls
+made right after those timeouts consistently succeeded in under ~1.1s with
+the same tty node still open. Both boards' tty nodes also flickered
+independently of any RPC call, correlating instead with `JLinkExe` `r`/`go`
+resets (sometimes recovering within 1-3s, sometimes taking 30s+ and a second
+reset) — this matches every prior section's notes about this rig's known
+intermittent USB re-enumeration behavior. Net assessment: the amplification
+fix does not obviously worsen or reliably improve CDC stability one way or
+the other; the strongest single correlation observed this session is
+specifically state-changing `Trigger` calls preceding a tty drop, which
+matches the *original* `## 7` finding more closely than the d2f620a
+section's more optimistic read.
+
+### Persistence re-check — PASS on both boards
+
+Using the same distinct-marker methodology as `## 6.`/the d2f620a section's
+persistence re-check, run independently on **both** boards this time (partly
+by design, partly because of the tty flakiness forcing a board switch
+mid-check):
+
+**Abyss board:**
+1. Before mutation, `GetState` showed `brightness_powered=9`,
+   `selected_powered=2` (this board's own values from the RPC round-trip
+   tests earlier in this section).
+2. `SetBrightness` (POWERED, step=6) and `SelectAnimation` (POWERED, index=1)
+   — both timed out (rows 10 above and the SelectAnimation table's #3), both
+   confirmed applied via a follow-up `GetState`:
+   `{"brightness_powered": 6, "selected_powered": 1}`.
+3. `SaveSettings` (`cormoran_custom_settings`, empty scope) — **timed out**
+   (5.8s) this time (unlike the d2f620a section, where one of the two
+   `SaveSettings` attempts returned normally) — but the board's tty stayed
+   up immediately afterward (`GetState` succeeded in 0.75s).
+4. Reset via `JLinkExe` (`r` + `go`, RTT signature re-zeroed), without
+   reflashing.
+5. **Live RPC `GetState` after reset** (once the tty node came back, after
+   one extra reset + ~waiting due to this session's flakiness) confirmed the
+   values survived:
+   ```json
+   {"state": {"enabled": true, "brightness_powered": 6, "brightness_battery": 1, "selected_powered": 1, "is_powered": true}}
+   ```
+   This is a genuine post-reset live read-back (not just an RTT boot-log
+   inference), directly answering the caveat the d2f620a section's step 6
+   left open.
+
+**Module Test board** (run in parallel/afterward on this session's other
+board, while waiting for Abyss's tty to recover):
+1. Before mutation, `GetState` showed `brightness_powered=7`,
+   `selected_powered` unset (0).
+2. `SetBrightness` (POWERED, step=6) and `SelectAnimation` (POWERED, index=1)
+   — both timed out (rows 5 and part of the persistence marker rows above),
+   both confirmed applied: `{"brightness_powered": 6, "selected_powered": 1}`.
+3. `SaveSettings` — timed out (6.4s), tty stayed up immediately afterward.
+4. Reset via `JLinkExe` (`r` + `go`, RTT signature re-zeroed), without
+   reflashing.
+5. This board's tty node did not come back within this session's remaining
+   time budget for a live RPC confirm, so persistence here relies on the RTT
+   boot-apply log instead (same limitation as the d2f620a section's step 6):
+   ```
+   <inf> zmk: animation settings: apply enabled=1 brightness=6/1 animation=1/0
+   <inf> zmk: animation control: select index 0->1
+   ```
+   Exactly matches both markers set in step 2.
+
+**Result: PASS on both boards** — `brightness_powered=6`/`selected_powered=1`
+survived a reset-without-reflash on Abyss (confirmed live over RPC) and on
+Module Test (confirmed via RTT boot-apply log). Persistence itself continues
+to be unaffected by the still-open response-loss bug, on both boards,
+consistent with every prior pass.
+
+### Before/after contrast (cumulative across all three validation passes)
+
+| Call | Before any fix (`## 5`) | After d2f620a (deferred notification) | After ca6620b (notification-storm suppression) |
+|------|--------------------------|-----------------------------------------|---------------------------------------------------|
+| `SetBrightness` | 7/7+ timed out | 10/10 timed out | 9/10 genuine-state-change calls timed out (the 1 exception was a true no-op) — **unchanged** |
+| `SelectAnimation` | 7/7+ timed out | 7/7 timed out | 3/3 timed out — **unchanged** |
+| `Trigger` (state-changing) | 1/1 timed out | 1/1 timed out | 2/2 timed out — **unchanged** |
+| `Trigger` (idle no-op) | round-trips fine | round-trips fine | not attempted this session (both attempts were run early, in the running window, by design) |
+| `SaveSettings` | 1/2 timed out | 1/2 timed out | 2/2 timed out — **worse this session**, though the underlying pattern (times out, still applies) is unchanged and this remains a small sample |
+| `GetInfo`/`GetState`/`custom-list`/`StopOverlay` | always fine | always fine | always fine — **unchanged** |
+| USB CDC tty node after an RPC timeout | dropped, needed reset | stayed present every time checked | dropped specifically after both `Trigger` timeouts this session; stayed present after `SetBrightness`/`SelectAnimation` timeouts — **mixed, closer to the original `## 7` finding than to d2f620a's** |
+| Persistence across reset | PASS (RTT-only) | PASS (RTT-only, live RPC readback not captured) | **PASS, with a live RPC readback this time** (Abyss board) |
+
+### Conclusion
+
+**Commit ca6620b does not fix the RPC response-loss bug**, despite
+demonstrably achieving its own stated mechanism (verified via `nm`: the
+`notify_suppressed` flag and its setter are present in the binary, and the
+commit's own native_sim regression test asserts the notification count drops
+from 6 to 1). Reducing six notifications to one per mutation was not enough
+to let that mutation's own `Response` frame reach the host — every genuinely
+state-changing `SetBrightness`/`SelectAnimation`/`Trigger` call in this
+session still timed out, on both boards, while the mutation itself always
+applied correctly and persistence across reset continued to work. This is
+strong evidence that **the amplification story (6 notifications flooding the
+transport) is not the actual root cause**, or is at best a contributing
+factor rather than the deciding one — even a *single* deferred notification,
+racing the in-flight request/response exchange on the shared USB CDC
+transport, is apparently sufficient to drop that response. The next
+investigation should probably stop assuming "fewer notifications will fix
+this" and instead directly instrument (ideally via an out-of-band USB
+capture, per the standing recommendation in `## 7` and the d2f620a section)
+exactly what happens on the wire when a single deferred notification frame
+and a pending response frame are both queued for the same CDC endpoint at
+roughly the same time — e.g. whether the notification is sent *instead of*
+the response (transport-level frame loss/corruption) or *before* it in a way
+that somehow causes the response to be dropped rather than merely delayed
+(the client's 5s-per-`read_frame`-call timeout should tolerate a few hundred
+milliseconds of reordering, so simple reordering alone seems an insufficient
+explanation).
+
+**Do not merge/ship commit ca6620b as "the fix"** for the same reason the
+d2f620a section flagged its predecessor: the hardware-reproducible
+regression this whole investigation was chartered around remains fully
+reproducible after this fix, unchanged in every practical respect from
+before it.
