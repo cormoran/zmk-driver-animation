@@ -1,0 +1,123 @@
+#include <physical_layouts.dtsi>
+
+/*
+ * Phase E hardware-validation overlay for this sandbox's rig ONLY. Layered
+ * on top of the `tester_xiao_animation` shield via
+ * `-DEXTRA_DTC_OVERLAY_FILE=` (higher precedence than the shield overlay,
+ * applied without modifying it) — see DESIGN.md §7 and
+ * docs/design/hardware-validation.md for the full rationale. Do NOT use this
+ * overlay for firmware meant to boot from the stock UF2 bootloader, and do
+ * NOT use it on a rig without the PMW3610 sensor / stale flash quirks below.
+ *
+ * Fix 1 — stale flash below 0x27000 (see
+ * skills/develop-zmk-module/references/hardware-rig.md): this unit's flash
+ * below the stock `code_partition` offset (0x27000) holds unrelated firmware
+ * from a prior project. `-DCONFIG_FLASH_LOAD_OFFSET=0x0` alone does NOT
+ * relocate the image (confirmed 2026-07-05 — this board family reads the
+ * load address from the `zephyr,code-partition` chosen node, not from that
+ * Kconfig). Delete the stock reserved/code partitions and redefine
+ * `code_partition` to start at 0x0 so the app's vector table lands where the
+ * J-Link-loaded hex actually begins.
+ */
+/delete-node/ &reserved_partition_0;
+/delete-node/ &code_partition;
+
+&flash0 {
+	partitions {
+		compatible = "fixed-partitions";
+		#address-cells = <1>;
+		#size-cells = <1>;
+
+		code_partition: partition@0 {
+			label = "Application";
+			reg = <0x00000000 0x000ec000>;
+		};
+	};
+};
+
+/ {
+	chosen {
+		zephyr,code-partition = &code_partition;
+	};
+};
+
+/*
+ * Fix 2 — WS2812 strip / PMW3610 SPI pin conflict. `tester_xiao_animation`'s
+ * `&xiao_spi` (SPI2) uses pinctrl `spi2_default`/`spi2_sleep`: SCK=P1.13
+ * (xiao_d 8), MOSI=P1.15 (xiao_d 10), MISO=P1.14 (xiao_d 9). This rig's
+ * PMW3610 is wired to the SAME physical pins: MOSI/MISO=P1.13 (xiao_d 8,
+ * 3-wire), IRQ=P1.14 (xiao_d 9), CS=P1.15 (xiao_d 10) — i.e. every SPI2 pin
+ * the strip would drive is already a PMW3610 signal line. There is no
+ * physical LED strip wired on this rig (DESIGN.md §7), so rather than flash
+ * a build that contends for those lines with the sensor, retarget the
+ * strip's SPI2 pinctrl to genuinely unused pins: xiao_d 1/2/3 (P0.03/P0.28/
+ * P0.29). These are free both physically (nothing wired) and logically
+ * (not used by kscan0's xiao_d 0, nor by the board's default uart0
+ * (xiao_d 6/7) or i2c1 (xiao_d 4/5, and xiao_d 5 already belongs to the
+ * PMW3610's SCK) pinctrl). The driver code path still runs identically
+ * (led_strip_update_rgb() calls go out over SPI2 as before); only the wire
+ * destination changes, and nothing is observed there anyway.
+ */
+&pinctrl {
+	spi2_default: spi2_default {
+		group1 {
+			psels = <NRF_PSEL(SPIM_SCK, 0, 3)>,
+				<NRF_PSEL(SPIM_MOSI, 0, 28)>,
+				<NRF_PSEL(SPIM_MISO, 0, 29)>;
+		};
+	};
+
+	spi2_sleep: spi2_sleep {
+		group1 {
+			psels = <NRF_PSEL(SPIM_SCK, 0, 3)>,
+				<NRF_PSEL(SPIM_MOSI, 0, 28)>,
+				<NRF_PSEL(SPIM_MISO, 0, 29)>;
+			low-power-enable;
+		};
+	};
+};
+
+/*
+ * Fix 3 — CONFIG_ZMK_STUDIO=y requires physical layouts, which are mutually
+ * exclusive with the legacy `zmk,matrix-transform` chosen property
+ * (`USE_PHY_LAYOUTS` in dependencies/zmk/app/src/physical_layouts.c requires
+ * `!DT_HAS_CHOSEN(zmk_matrix_transform)`; the BUILD_ASSERT there fired first
+ * without this fix). The `tester_xiao_animation` shield's own overlay sets
+ * `chosen { zmk,matrix-transform = &transform0; };` and defines no physical
+ * layout at all (unlike ZMK's own generic `tester_xiao` shield). Delete that
+ * one chosen property (kscan/animation chosen properties are untouched) and
+ * add a minimal one-key physical layout wired to the same `transform0` used
+ * by the shield's real `kscan0` (1 row x 1 column — see
+ * boards/shields/tester_xiao_animation/tester_xiao_animation.overlay) so the
+ * Studio build assertion is satisfied without touching the shield file
+ * itself.
+ */
+&{/chosen} {
+	/delete-property/ zmk,matrix-transform;
+};
+
+/ {
+	hw_validation_position_map {
+		compatible = "zmk,physical-layout-position-map";
+		complete;
+
+		hw_validation_pinout_map: hw_validation_pinout_positions {
+			physical-layout = <&hw_validation_physical_layout0>;
+			positions = <0>;
+		};
+	};
+
+	hw_validation_physical_layout0: hw_validation_physical_layout_0 {
+		compatible = "zmk,physical-layout";
+		display-name = "HW Validation Single Key";
+		transform = <&transform0>;
+
+		keys  //                     w   h    x    y    rot   rx   ry
+			= <&key_physical_attrs 100 100    0    0      0    0    0>
+			;
+	};
+
+	chosen {
+		zmk,physical-layout = &hw_validation_physical_layout0;
+	};
+};
