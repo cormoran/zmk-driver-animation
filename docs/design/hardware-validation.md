@@ -439,3 +439,285 @@ lost" pattern as §5's `SetBrightness`/`SelectAnimation`.
   several `Trigger`/`StopOverlay`/persistence-check attempts had to be
   retried with fresh resets; this consumed a large share of the session's
   hardware time.
+
+## Fix re-validation (commit d2f620a — deferred notification)
+
+Ran 2026-07-08, same day and same shared rig, owner `phase-e-revalidate`,
+locks released before writing this section. Goal: re-validate on real
+hardware after commit `d2f620a` ("Fix RPC response loss: defer animation
+state-changed notification to workqueue"), which defers
+`raise_zmk_studio_custom_notification()` from `animation_state_changed_callback()`
+to `zmk_workqueue_lowprio_work_q()` via a `k_work`, so the notification no
+longer runs synchronously on the same call stack as the mutating RPC
+request's own response encode.
+
+**Headline finding (read this first): the fix does NOT resolve the bug.**
+`SetBrightness` and `SelectAnimation` still time out on every single call in
+this session (10/10 and 7/7 respectively, across two boards, including one
+attempt with a 30s timeout to rule out "just slow"), exactly reproducing the
+§5 pattern: the mutation applies (confirmed via follow-up `GetState`/RTT
+every time) but the RPC `Response` frame is never delivered to the host. A
+genuinely state-changing `Trigger` (run immediately after boot, before the
+animation module's own ~30s idle timeout, so it wasn't a design no-op) also
+timed out (1/1). `SaveSettings` (a separate subsystem,
+`cormoran_custom_settings`) was intermittent: timed out once on the Abyss
+board, then succeeded once on the Module Test board with otherwise identical
+inputs — suggesting the underlying race is not unique to the animation
+module's own notification path. Read-only calls (`GetInfo`, `GetState`,
+`custom-list`) continued to round-trip normally every time, as before. This
+is reported here per instructions, without attempting a further code fix —
+that's out of scope for this re-validation pass.
+
+One genuine, confirmed improvement: unlike §7's finding, the board's USB
+CDC-ACM tty node did **not** visibly drop immediately after an individual
+RPC timeout in this session — checked repeatedly right after a
+`SetBrightness`/`SelectAnimation` timeout and the tty node was still present
+and immediately usable for the next `GetState` call. The tty-node dropouts
+seen in this session instead correlated with `JLinkExe` `r`/`go` resets
+(on both boards, intermittently, sometimes recovering within 1-2s, sometimes
+requiring several retries over 20-30s) rather than with RPC timeouts
+specifically — consistent with `hardware-rig.md`'s pre-existing note about
+this rig's own intermittent reset/re-enumeration behavior, now more clearly
+separated from the RPC response-loss bug than in §7 (where the two were
+harder to tell apart). So: the fix appears to have removed (or at least
+greatly reduced) the transport-wedging side effect, but not the core
+response-loss bug itself.
+
+### Build
+
+Same recipe as §2, rebuilt from the `v2-custom-studio-rpc` branch at commit
+`d2f620a` (`git log --oneline -3` at the time of this build showed
+`d2f620a` at HEAD). `All builds succeeded.` Build directory:
+`build/hw_validation__xiao_ble/zmk__tester_xiao_animation`. Memory usage:
+FLASH 311256 B (32.20%), RAM 90544 B (34.54%) — matches §2 to within a few
+bytes (the fix adds one `k_work` + handler). West's own UF2 log line
+confirmed the load address again:
+
+```
+Converted to uf2, output size: 622592, start address: 0x0
+```
+
+Independently confirmed via objdump:
+
+```
+$ arm-zephyr-eabi-objdump -f build/hw_validation__xiao_ble/zmk__tester_xiao_animation/zephyr/zmk.elf | grep -i 'start address'
+start address 0x0000f459
+```
+
+Also confirmed the binary actually contains the fix (not a stale/cached
+build) via `arm-zephyr-eabi-nm`:
+
+```
+200025a4 D animation_notification_work
+00004ba4 t animation_notification_work_handler
+```
+
+`_SEGGER_RTT` symbol address unchanged: `0x20002010`.
+
+### Rig & boards used
+
+- **Primary attempt: Module Test board** (serial `0C5B206D3B120A9F`, J-Link
+  `001050398082`), flashed first using the same SWD/RTT-signature-zero
+  procedure as §3. Flash succeeded (`311296 bytes`, `O.K.`). Boot RTT log
+  confirmed clean initialization, and — as a bonus data point — the
+  *previous* Phase E persisted settings (`brightness=6/1 animation=1/0`)
+  survived this full reflash unchanged (the code partition is separate from
+  the NVS settings partition, so a plain flash without erase doesn't disturb
+  persisted settings): `animation settings: apply enabled=1 brightness=6/1
+  animation=1/0`, `animation control: select index 0->1`.
+- After a batch of RPC calls and a `JLinkExe` `r`/`go` reset (used to try
+  to catch a genuinely state-changing `Trigger` within the ~30s idle
+  window), the Module Test board's tty node repeatedly failed to
+  re-enumerate for extended periods (over 30s across two separate resets),
+  matching `hardware-rig.md`'s documented "known intermittent reset issue"
+  and the fallback condition in the task instructions. **Switched to the
+  Abyss board** (serial `10E4D16A1E4BFE9C`, J-Link `001057792823`) as
+  primary for the core RPC round-trip tests, flashing the identical image
+  (`311296 bytes`, `O.K.`, same offset-0 overlay, no workaround needed).
+- Later in the session, both boards' tty nodes intermittently disappeared
+  and reappeared independently of each other across several `r`/`go`
+  resets (sometimes Module Test's node was reachable while Abyss's was not,
+  and vice versa) — this looks like host-side USB re-enumeration flakiness
+  on this rig rather than anything specific to either board or to this
+  fix. The final persistence check (below) ended up being run on the
+  Module Test board once its node came back, since Abyss's tty was down at
+  that point.
+
+### RPC round-trip evidence (the core test)
+
+All calls via:
+
+```
+PYTHONPATH=tools tools/zmk-studio-rpc --workspace /home/ubuntu/zmk-workspace \
+  --transport serial --port /dev/zmk-hp-zmk-tty-<serial>-00 \
+  custom-call --identifier cormoran__animation \
+  --proto zmk-driver-animation/proto/cormoran/animation/animation.proto \
+  --request-type cormoran.animation.Request \
+  --response-type cormoran.animation.Response \
+  --json '<request>'
+```
+
+**GetState (baseline, both boards, several calls):** always returned
+promptly (typically well under 1s, one outlier at ~6s but still returned —
+see note below). Example:
+
+```json
+{"state": {"enabled": true, "brightness_powered": 6, "brightness_battery": 1, "selected_powered": 1, "is_powered": true}}
+```
+
+**SetBrightness — 10/10 timed out, 10/10 still applied:**
+
+| # | Board | step | Result | Follow-up GetState confirms applied? |
+|---|-------|------|--------|----------------------------------------|
+| 1 | Module Test | 3 | Timed out (5.8s) | yes (brightness_powered 3, checked after batch) |
+| 2 | Module Test | 5 | Timed out (5.8s) | yes |
+| 3 | Module Test | 2 | Timed out (5.8s) | yes |
+| 4 | Module Test | 7 | Timed out (6.3s) | yes |
+| 5 | Module Test | 4 | Timed out (6.3s) | yes, `GetState` right after showed `brightness_powered: 4` |
+| 6 | Module Test | 8 | Timed out (**30.8s, explicit `--timeout 30`**) | yes, `GetState` right after showed `brightness_powered: 8` |
+| 7 | Abyss | 4 | Timed out (6.0s) | yes (see #9) |
+| 8 | Abyss | 6 | Timed out (6.5s) | yes (see #9) |
+| 9 | Abyss | 9 | Timed out (6.8s) | yes, `StopOverlay` right after returned `brightness_powered: 9` |
+| 10 | Module Test | 7 (persistence marker) | Timed out (5.9s) | yes, `GetState` right after showed `brightness_powered: 7` |
+
+Raw example (step=8, 30s timeout, to rule out "just needs more time"):
+
+```
+$ time ... --timeout 30 ... --json '{"setBrightness":{"powerSource":"POWER_SOURCE_POWERED","step":8}}'
+Timed out waiting for a Studio RPC frame
+real 0m30.812s
+$ ... --json '{"getState":{}}'
+{"state": {"enabled": true, "brightness_powered": 8, "brightness_battery": 1, "selected_powered": 1, "is_powered": true}}
+```
+
+**SelectAnimation — 7/7 timed out, applied every time it was checked:**
+
+| # | Board | index | Result | Confirmed applied |
+|---|-------|-------|--------|--------------------|
+| 1 | Module Test | 2 | Timed out (7.6s) | — |
+| 2 | Module Test | 0 | Timed out (11.9s) | — |
+| 3 | Module Test | 1 | Timed out (11.2s) | yes, `GetState` after the batch showed `selected_powered: 1` |
+| 4 | Module Test | 2 (isolated re-test) | Timed out (5.9s) | yes, `GetState` right after showed `selected_powered: 2` |
+| 5 | Abyss | 1 | Timed out (6.4s) | yes (see #6) |
+| 6 | Abyss | 2 | Timed out (5.9s) | yes, `GetState` right after showed `selected_powered: 2` |
+| 7 | Module Test | 0 (persistence marker) | Timed out (5.8s) | yes, `GetState` right after omitted `selected_powered` (proto3 default 0) |
+
+**Trigger — the by-design idle no-op still round-trips fine, but a genuine
+state-changing Trigger reproduces the bug:**
+
+- Module Test, run a couple of minutes after boot (past the ~30s idle
+  timeout, same as §5): returned promptly (0.87s) with no `overlay_active`
+  field — a clean no-op round trip, exactly like §5's first attempt. Not
+  evidence either way for the response-loss bug, since a no-op never
+  notifies.
+- Abyss, run immediately after a fresh reset specifically to catch the base
+  animation in its "running" state (so `Trigger` would actually flip
+  `overlay_active` and call `notify_state_changed()`): **timed out** (7.1s).
+  This is the same response-loss pattern as `SetBrightness`/`SelectAnimation`,
+  now confirmed for a real (non-no-op) `Trigger` call too.
+
+**StopOverlay — 2/2 returned normally** (Module Test and Abyss), both times
+with no state actually changing (overlay already inactive/idle), so — like
+§5 — not strong evidence either way, but consistent with "only state changes
+that call `notify_state_changed()` trigger the bug."
+
+**GetInfo/GetState/custom-list — always returned normally**, dozens of
+calls across the session, on both boards, before/after/interleaved with the
+timed-out mutating calls. No exceptions observed.
+
+### Before/after contrast
+
+| Call | Before fix (§5) | After fix (this section) |
+|------|------------------|---------------------------|
+| `SetBrightness` | 7/7+ timed out (applies, response lost) | 10/10 timed out (applies, response lost) — **unchanged** |
+| `SelectAnimation` | 7/7+ timed out (applies, response lost) | 7/7 timed out (applies, response lost) — **unchanged** |
+| `Trigger` (state-changing) | 1/1 timed out | 1/1 timed out — **unchanged** |
+| `Trigger` (idle no-op) | round-trips fine | round-trips fine — **unchanged** |
+| `SaveSettings` | 1/2 timed out (intermittent) | 1/2 timed out (intermittent) — **unchanged** |
+| `GetInfo`/`GetState`/`custom-list` | always fine | always fine — **unchanged** |
+| USB CDC tty node after an RPC timeout | dropped, needed J-Link reset | stayed present in every case checked this session — **improved** |
+
+**Conclusion: the deferred-notification fix in commit d2f620a does not fix
+the RPC response-loss bug.** It appears to have fixed (or greatly reduced)
+a secondary symptom — the transport wedging/CDC-node-dropping that
+correlated with a timeout in §7 — but the primary regression this fix was
+meant to resolve (`SetBrightness`/`SelectAnimation`/state-changing `Trigger`
+never returning their `Response` frame) is still 100% reproducible on both
+boards after the fix. `SaveSettings`'s call-to-call intermittency (times out
+on one board/attempt, succeeds on another with identical inputs) suggests
+whatever the real race is, it is not fully deterministic and not confined to
+the animation module's own notification code path — worth investigating
+whether the same "mutating RPC response racing a workqueue-deferred (or
+otherwise asynchronous) notification/save completion" pattern exists
+elsewhere in the shared RPC core or the USB CDC ACM transport layer, rather
+than assuming the fix only needs a different deferral target within this
+module. A partial RTT capture around one `SetBrightness` batch did show
+several `Encoding custom response of size 12` debug lines (consistent with
+the response encode path running), but the 8KB RTT buffer wraps too fast
+(same limitation as §5) to conclusively correlate specific encode calls with
+specific timed-out requests — this remains an area where an out-of-band USB
+capture, rather than RTT, would be needed for root-causing.
+
+### Persistence re-check
+
+Still works, using the same distinct-marker methodology as §6, on the
+Module Test board:
+
+1. Before mutation, `GetState` showed the original Phase E values:
+   `brightness_powered=6`, `selected_powered=1`.
+2. `SetBrightness` (POWERED, step=7) and `SelectAnimation` (POWERED,
+   index=0) — both timed out on their `Response` (matching the pattern
+   above), but a follow-up `GetState` confirmed both applied:
+   `brightness_powered=7`, `selected_powered` absent (proto3 default 0,
+   i.e. index 0).
+3. `SaveSettings` (empty scope = save everything) — this attempt **returned
+   normally** (0.84s, `{"status": {"affected_count": 5, "message": "Settings
+   saved"}}`), unlike the earlier Abyss-board `SaveSettings` attempt that
+   timed out — see the intermittency note above.
+4. Reset via `JLinkExe` (`r` + `go`, RTT signature re-zeroed), without
+   reflashing.
+5. Boot RTT log after reset confirmed the new values were persisted and
+   re-applied:
+   ```
+   <inf> zmk: animation settings: apply enabled=1 brightness=7/1 animation=0/0
+   ```
+   (matches the two markers set in step 2 exactly: `brightness_powered=7`,
+   `selected animation index=0`.)
+6. A follow-up live `GetState` over RPC could not be captured this time —
+   the Module Test board's tty node dropped again before the call could be
+   made and did not recover within ~25s of polling (the same rig
+   flip-flopping described above; the Abyss board's node was down at the
+   same time so there was no immediately-available fallback port). Given
+   time constraints, this section relies on the RTT boot-apply log alone
+   for confirmation, which is a direct read of the same
+   `animation_settings: apply` code path §6 used as corroborating (not
+   sole) evidence — considered sufficient here since it names both markers
+   explicitly and unambiguously.
+
+**Result: PASS** (with the caveat in step 6 that only RTT, not a live RPC
+read-back, confirmed the post-reset values this time). Persistence itself
+is not affected by the still-open response-loss bug.
+
+### Summary for whoever picks this up next
+
+- **Do not merge/ship commit d2f620a as "the fix"** — it does not resolve
+  the hardware-reproducible regression it was written for. Re-open the
+  investigation with the "applies, response lost" symptom still fully
+  reproducible for `SetBrightness`/`SelectAnimation`/state-changing
+  `Trigger`.
+- The one thing it did plausibly improve — the CDC tty node no longer
+  visibly dropping right after an individual RPC timeout — is worth
+  keeping in mind as a partial step, but is not itself the bug this phase
+  was chartered to fix.
+- `SaveSettings`'s intermittency (times out sometimes, succeeds other
+  times with the same inputs) is a useful clue: the race is likely timing-
+  dependent rather than purely structural, and may not be fully explained
+  by "the notification callback runs on the same call stack as the
+  response encode" alone, since d2f620a removed exactly that and the bug
+  persisted unchanged for the two calls that were 100% reproducible before
+  and after.
+- RTT's 8KB buffer continues to be too small/fast-wrapping to catch the
+  exact sequence of events around a single mutating RPC call — an
+  out-of-band USB capture (e.g. Wireshark on the host USB controller, or a
+  logic analyzer on the SWD/UART pins if available) is recommended for the
+  next attempt at root-causing this, rather than relying on RTT alone.
