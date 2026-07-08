@@ -12,4 +12,6 @@ select_animation enabled=1 brightness=3/1 selected=1/0 is_powered=0 overlay_acti
 select_animation out-of-range which_response_type=1
 trigger enabled=1 brightness=3/1 selected=1/0 is_powered=0 overlay_active=1 has_overlay_index=1 overlay_index=0
 stop_overlay enabled=1 brightness=3/1 selected=1/0 is_powered=0 overlay_active=1 has_overlay_index=1 overlay_index=0
+rpc_mutation_suppresses_notification enabled=1 brightness=4/1 selected=1/0 is_powered=0 overlay_active=1 has_overlay_index=1 overlay_index=0
+rpc_mutation_suppresses_notification notify_delta=0
 notification_from_behavior_path fired=1

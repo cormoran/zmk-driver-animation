@@ -342,37 +342,69 @@ static const struct zmk_animation_api control_api = {
 static zmk_animation_state_changed_cb_t state_changed_cb;
 
 /*
- * Suppression flag for animation_settings.c's apply_all() bulk re-apply
- * (hardware-confirmed root cause: see docs/design/hardware-validation.md's
- * RPC-response-loss finding). A single Studio RPC mutation (e.g.
- * SetBrightness) writes through to custom-settings, which synchronously
- * raises zmk_custom_setting_changed, which re-enters this module's own
- * changed-listener -> apply_all() -> re-applies all 5 settings via this
- * file's setters (zmk_animation_select() x2, zmk_animation_set_brightness()
- * x2, zmk_animation_set_enabled() x1). Without this flag, each of those 5
- * setters (plus the originating setter's own call) calls
- * notify_state_changed(), so one mutation floods the shared Studio
- * transport with 6 state-changed notifications - starving the mutating
- * call's own Response frame, which is confirmed on hardware to then never
- * reach the host. Set by
- * zmk_animation_control_set_notify_suppressed() around apply_all()'s bulk
- * re-apply so that window emits zero notifications; the originating
- * setter's own notify_state_changed() call (outside that window) still
- * fires normally, so exactly one notification reaches the RPC/UI consumer
- * per mutation.
+ * Nesting-safe suppression depth counter for animation state-changed
+ * notifications (hardware-confirmed root cause: see
+ * docs/design/hardware-validation.md's RPC-response-loss finding). Two
+ * independent call sites bracket scopes with this counter, and they can
+ * nest:
+ *
+ *   1. animation_settings.c's apply_all() bulk re-apply: a single Studio
+ *      RPC mutation (e.g. SetBrightness) writes through to custom-settings,
+ *      which synchronously raises zmk_custom_setting_changed, which
+ *      re-enters this module's own changed-listener -> apply_all() ->
+ *      re-applies all 5 settings via this file's setters
+ *      (zmk_animation_select() x2, zmk_animation_set_brightness() x2,
+ *      zmk_animation_set_enabled() x1). Without suppression, each of those 5
+ *      setters (plus the originating setter's own call) calls
+ *      notify_state_changed(), so one mutation floods the shared Studio
+ *      transport with 6 state-changed notifications - starving the
+ *      mutating call's own Response frame, confirmed on hardware to then
+ *      never reach the host.
+ *   2. request_exec.c's zmk_animation_request_exec_handle(): brackets the
+ *      *entire* RPC request dispatch, so every animation state-changed
+ *      notification raised while handling an RPC request (including the
+ *      originating setter's own notify_state_changed() call, and any
+ *      nested apply_all() re-entry from (1) above) is suppressed. This is
+ *      further confirmed on hardware: even a single animation notification
+ *      concurrent with the RPC response starves that response on the
+ *      shared Studio transport, so RPC-originated mutations must emit
+ *      *zero* animation notifications, not just one. This is safe because
+ *      the RPC Response itself carries a full StateResponse read-back (the
+ *      requesting client already learns the new state from the response),
+ *      and ZMK Studio RPC is single-connection (core selects one
+ *      transport), so there is no other observer that needs the
+ *      notification. Behavior-path/power-path/external-settings-change
+ *      mutations do not go through request_exec.c and so still notify
+ *      normally.
+ *
+ * A plain bool is not sufficient: request_exec.c's bracket (2) is
+ * outermost, and apply_all()'s bracket (1) nests inside it during the
+ * write-through re-entrancy above. With a bool, apply_all()'s inner
+ * `set_notify_suppressed(false)` would prematurely un-suppress before
+ * request_exec.c's own bracket closes, letting the originating setter's
+ * notify_state_changed() call leak through - and that single leaked
+ * notification is enough to reproduce the bug (see docs/design/
+ * hardware-validation.md). The depth counter fixes this: suppression is
+ * only lifted once every `true` has been matched by a `false`, so nested
+ * scopes compose correctly. See zmk_animation_control_set_notify_suppressed()
+ * below and its declaration in control.h for the paired-call contract.
  */
-static bool notify_suppressed;
+static int notify_suppress_depth;
 
 void zmk_animation_set_state_changed_callback(zmk_animation_state_changed_cb_t callback) {
     state_changed_cb = callback;
 }
 
 void zmk_animation_control_set_notify_suppressed(bool suppressed) {
-    notify_suppressed = suppressed;
+    if (suppressed) {
+        notify_suppress_depth++;
+    } else if (notify_suppress_depth > 0) {
+        notify_suppress_depth--;
+    }
 }
 
 static void notify_state_changed(void) {
-    if (notify_suppressed) {
+    if (notify_suppress_depth > 0) {
         return;
     }
     if (state_changed_cb != NULL) {
@@ -943,10 +975,12 @@ void zmk_animation_set_state_changed_callback(zmk_animation_state_changed_cb_t c
 }
 
 /* No control device, so nothing ever notifies here - present only so
- * animation_settings.c's apply_all() (built whenever
- * CONFIG_ZMK_ANIMATION_CUSTOM_SETTINGS=y, regardless of whether a real
- * zmk,animation-control node exists) links against a single definition of
- * this symbol in every configuration. */
+ * animation_settings.c's apply_all() and studio/animation_request_exec.c
+ * (built whenever CONFIG_ZMK_ANIMATION_CUSTOM_SETTINGS=y /
+ * CONFIG_ZMK_ANIMATION_STUDIO_RPC=y, regardless of whether a real
+ * zmk,animation-control node exists) link against a single definition of
+ * this symbol in every configuration. Stays a no-op stub; the real
+ * nesting-safe depth-counter logic lives in the enabled branch above. */
 void zmk_animation_control_set_notify_suppressed(bool suppressed) { ARG_UNUSED(suppressed); }
 
 #endif /* DT_HAS_COMPAT_STATUS_OKAY(DT_DRV_COMPAT) */

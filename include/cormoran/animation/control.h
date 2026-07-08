@@ -126,17 +126,29 @@ void zmk_animation_set_state_changed_callback(zmk_animation_state_changed_cb_t c
 
 /**
  * Suppresses (`true`)/re-enables (`false`) the state-changed callback
- * registered above, without touching the registration itself. Intended for
- * a bulk re-apply of several settings at once (animation_settings.c's
- * apply_all(), triggered either at boot or re-entrantly whenever one of
- * this module's own setters writes through to custom-settings) to emit at
- * most one notification for the whole batch instead of one per setter
- * call. Confirmed on hardware (docs/design/hardware-validation.md) that
- * without this, a single Studio RPC mutation re-enters apply_all() and
- * amplifies into a burst of state-changed notifications that floods the
- * shared transport and starves that same RPC call's own Response frame.
- * Not reentrant/nesting-aware - callers that bracket a scope with
- * `true`/`false` must not call this from within another such scope.
+ * registered above, without touching the registration itself. Backed by a
+ * nesting-safe depth counter, not a plain bool: paired `true`/`false` calls
+ * MAY nest (a `false` only lifts suppression once every prior `true` has
+ * been matched), so a scope bracketed with `true`/`false` may safely call
+ * this again from within another such scope. Two call sites use this:
+ *   - animation_settings.c's apply_all(), for a bulk re-apply of several
+ *     settings at once (triggered either at boot or re-entrantly whenever
+ *     one of this module's own setters writes through to custom-settings),
+ *     to emit at most one notification for the whole batch instead of one
+ *     per setter call.
+ *   - studio/animation_request_exec.c, bracketing the entire RPC request
+ *     dispatch so an RPC-originated mutation emits *zero* animation
+ *     notifications: the RPC Response already carries a full state
+ *     read-back, and Studio RPC is single-connection, so the notification
+ *     is redundant there - and, per hardware confirmation below, actively
+ *     harmful.
+ * Confirmed on hardware (docs/design/hardware-validation.md) that any
+ * animation state-changed notification concurrent with an RPC response
+ * starves that response on the shared Studio transport, so RPC-originated
+ * mutations must suppress notifications entirely, not just reduce their
+ * count - and that apply_all()'s re-entrant nesting under
+ * request_exec.c's outer bracket is exactly why a plain bool was
+ * insufficient (see control.c's definition for the failure mode).
  */
 void zmk_animation_control_set_notify_suppressed(bool suppressed);
 

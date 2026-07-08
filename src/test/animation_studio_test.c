@@ -21,6 +21,16 @@
  * from a non-RPC path: after exercising every RPC kind, it calls
  * zmk_animation_select() directly (the same control.h entry point the
  * animctl behavior uses) and logs whether the registered callback fired.
+ *
+ * Also proves the RPC-response-loss fix (docs/design/hardware-validation.md):
+ * a mutating request dispatched through zmk_animation_request_exec_handle()
+ * must fire *zero* animation state-changed notifications (the response
+ * already carries the full state read-back; any concurrent animation
+ * notification is confirmed on hardware to starve that response on the
+ * shared Studio transport). test_rpc_mutation_suppresses_notification()
+ * below asserts that delta directly; test_notification_from_behavior_path()
+ * (a non-RPC, direct control.h call) is the contrasting case that must still
+ * notify normally.
  */
 
 #include <stdint.h>
@@ -239,18 +249,52 @@ static void test_trigger_and_stop_overlay(void) {
     log_state("stop_overlay", &stop_resp.response_type.state);
 }
 
-/* --- Notification.state_changed from a non-RPC path ---------------------- */
+/* --- Notification.state_changed suppression/delivery -------------------- */
 
 static int notify_count;
 
 static void on_state_changed(void) { notify_count++; }
 
-static void test_notification_from_behavior_path(void) {
-    zmk_animation_set_state_changed_callback(on_state_changed);
+/*
+ * Regression test for the hardware-confirmed RPC-response-loss bug (see
+ * docs/design/hardware-validation.md and src/studio/animation_request_exec.c's
+ * zmk_animation_request_exec_handle()): a mutating RPC request must emit
+ * *zero* animation state-changed notifications for its whole dispatch,
+ * including any re-entrant apply_all() notifications from the
+ * CONFIG_ZMK_ANIMATION_CUSTOM_SETTINGS write-through (tests/studio enables
+ * custom-settings - see native_sim.conf - so this exercises the nested
+ * suppression, not just the outer bracket alone). Uses a brightness step
+ * genuinely different from the current value (set to 3 by test_set_brightness
+ * above) so this is a real mutation, not a no-op that could pass for the
+ * wrong reason.
+ */
+static void test_rpc_mutation_suppresses_notification(void) {
+    int before = notify_count;
 
+    cormoran_animation_Request req = cormoran_animation_Request_init_zero;
+    req.which_request_type = cormoran_animation_Request_set_brightness_tag;
+    req.request_type.set_brightness.power_source =
+        cormoran_animation_PowerSource_POWER_SOURCE_POWERED;
+    req.request_type.set_brightness.step = 4;
+    cormoran_animation_Response resp = cormoran_animation_Response_init_zero;
+
+    zmk_animation_request_exec_handle(&req, &resp);
+
+    if (resp.which_response_type != cormoran_animation_Response_state_tag) {
+        LOG_ERR("animation studio test: rpc_mutation_suppresses_notification did not return "
+                "StateResponse");
+        return;
+    }
+    log_state("rpc_mutation_suppresses_notification", &resp.response_type.state);
+    LOG_INF("animation studio test: rpc_mutation_suppresses_notification notify_delta=%d",
+            notify_count - before);
+}
+
+static void test_notification_from_behavior_path(void) {
     int before = notify_count;
     /* Same control.h entry point the animctl behavior calls - not an RPC
-     * request at all. */
+     * request at all; unlike test_rpc_mutation_suppresses_notification()
+     * above, this must still notify. */
     zmk_animation_select(0, ZMK_ANIMATION_POWER_SOURCE_BATTERY);
 
     LOG_INF("animation studio test: notification_from_behavior_path fired=%d",
@@ -258,6 +302,11 @@ static void test_notification_from_behavior_path(void) {
 }
 
 static int animation_studio_test_init(void) {
+    /* Registered before any request_exec/control.h call below so
+     * test_rpc_mutation_suppresses_notification()'s delta assertion is
+     * meaningful. */
+    zmk_animation_set_state_changed_callback(on_state_changed);
+
     log_get_info_worst_case_encoded_size();
     test_get_info();
     test_get_state();
@@ -265,6 +314,7 @@ static int animation_studio_test_init(void) {
     test_set_brightness();
     test_select_animation();
     test_trigger_and_stop_overlay();
+    test_rpc_mutation_suppresses_notification();
     test_notification_from_behavior_path();
     return 0;
 }

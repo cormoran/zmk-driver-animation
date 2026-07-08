@@ -164,30 +164,51 @@ static void handle_stop_overlay(const cormoran_animation_StopOverlayRequest *req
 
 bool zmk_animation_request_exec_handle(const cormoran_animation_Request *req,
                                        cormoran_animation_Response *resp) {
+    /*
+     * Suppress animation state-changed notifications for the whole RPC
+     * request dispatch below (hardware-confirmed root cause: docs/design/
+     * hardware-validation.md). A mutating request's Response already carries
+     * a full StateResponse read-back, so any animation notification raised
+     * while handling this request (directly, or re-entrantly via
+     * animation_settings.c's apply_all() write-through) is redundant for the
+     * requesting client - and, confirmed on hardware, actively harmful:
+     * even one such notification concurrent with the Response starves that
+     * Response on the shared Studio transport, so the client times out
+     * despite the mutation having applied. ZMK Studio RPC is single-
+     * connection (core selects one transport), so there is no other
+     * observer that needs the notification here. Uses the nesting-safe
+     * depth counter (control.h/control.c) so this outer bracket composes
+     * correctly with apply_all()'s own inner bracket.
+     */
+    bool handled = true;
+    zmk_animation_control_set_notify_suppressed(true);
     switch (req->which_request_type) {
     case cormoran_animation_Request_get_info_tag:
         handle_get_info(resp);
-        return true;
+        break;
     case cormoran_animation_Request_get_state_tag:
         respond_with_state(resp);
-        return true;
+        break;
     case cormoran_animation_Request_set_enabled_tag:
         handle_set_enabled(&req->request_type.set_enabled, resp);
-        return true;
+        break;
     case cormoran_animation_Request_set_brightness_tag:
         handle_set_brightness(&req->request_type.set_brightness, resp);
-        return true;
+        break;
     case cormoran_animation_Request_select_animation_tag:
         handle_select_animation(&req->request_type.select_animation, resp);
-        return true;
+        break;
     case cormoran_animation_Request_trigger_tag:
         handle_trigger(&req->request_type.trigger, resp);
-        return true;
+        break;
     case cormoran_animation_Request_stop_overlay_tag:
         handle_stop_overlay(&req->request_type.stop_overlay, resp);
-        return true;
+        break;
     default:
         LOG_WRN("Unsupported animation request type: %d", req->which_request_type);
-        return false;
+        handled = false;
+        break;
     }
+    zmk_animation_control_set_notify_suppressed(false);
+    return handled;
 }
