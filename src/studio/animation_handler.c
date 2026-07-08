@@ -7,6 +7,7 @@
 #include <zephyr/kernel.h>
 #include <zephyr/sys/util.h>
 #include <zmk/studio/custom.h>
+#include <zmk/workqueue.h>
 #include <cormoran/animation/animation.pb.h>
 #include <cormoran/animation/animation_request_exec.h>
 #include <cormoran/animation/control.h>
@@ -73,7 +74,7 @@ static bool animation_rpc_handle_request(const zmk_custom_CallRequest *raw_reque
 
 /* --- Notification.state_changed (DESIGN.md #3.6) -------------------------
  *
- * control.c raises this synchronously (zmk_animation_set_state_changed_callback(),
+ * control.c invokes this synchronously (zmk_animation_set_state_changed_callback(),
  * a lightweight direct callback rather than a full ZMK event type - see
  * control.c's notify_state_changed()/the callback typedef's doc comment for
  * why a single in-module RPC consumer doesn't warrant a cross-module event)
@@ -81,11 +82,22 @@ static bool animation_rpc_handle_request(const zmk_custom_CallRequest *raw_reque
  * press, settings-restore, or USB plug/unplug affecting the current power
  * source. This keeps a connected web UI live without polling.
  *
- * raise_zmk_studio_custom_notification()'s encode_payload callback runs
- * *inside* the raise call (unlike CallResponse encoding, which can run again
- * later from a static buffer) - zmk/studio/custom.h's doc comment confirms
- * this explicitly - so a stack-local Notification is safe to build and pass
- * here; no static buffer needed for this path.
+ * Critically, one of those callers is a *mutating RPC request itself*:
+ * animation_rpc_handle_request() -> zmk_animation_request_exec_handle() ->
+ * a control.c mutator -> notify_state_changed() -> this callback, all on the
+ * same call stack, before the request's own CallResponse has been sent.
+ * Raising the Studio notification inline from there re-enters the RPC
+ * transport while the in-flight response is still pending, which drops the
+ * response and wedges the USB CDC transport - reproduced on hardware for
+ * every mutating call (SetBrightness, SelectAnimation, a state-changing
+ * Trigger) while read-only calls (GetInfo/GetState, which never notify)
+ * always succeeded; see docs/design/hardware-validation.md. Deferring the
+ * raise to the low-priority workqueue (mirrors
+ * zmk-feature-custom-settings' custom_settings_handler.c notification_work
+ * pattern) lets the current request's response go out first. This also
+ * naturally coalesces bursts of rapid state changes into a single
+ * notification, since the work handler always reads the latest state via
+ * zmk_animation_get_state() rather than a snapshot taken at submit time.
  */
 
 #define ANIMATION_SUBSYSTEM_IDENTIFIER_STRING "cormoran__animation"
@@ -134,7 +146,12 @@ static bool encode_notification_payload(pb_ostream_t *stream, const pb_field_t *
         stream, field, cormoran_animation_Notification_fields, notification);
 }
 
-static void animation_state_changed_callback(void) {
+static void animation_notification_work_handler(struct k_work *work);
+K_WORK_DEFINE(animation_notification_work, animation_notification_work_handler);
+
+static void animation_notification_work_handler(struct k_work *work) {
+    ARG_UNUSED(work);
+
     int index = animation_subsystem_index();
     if (index < 0) {
         return;
@@ -167,6 +184,15 @@ static void animation_state_changed_callback(void) {
     });
     if (ret) {
         LOG_WRN("Failed to raise animation state_changed notification: %d", ret);
+    }
+}
+
+/* Only submits the deferred work; see the comment block above for why the
+ * raise itself cannot happen here, synchronously on the caller's stack. */
+static void animation_state_changed_callback(void) {
+    int ret = k_work_submit_to_queue(zmk_workqueue_lowprio_work_q(), &animation_notification_work);
+    if (ret < 0) {
+        LOG_WRN("Failed to submit animation notification work: %d", ret);
     }
 }
 
