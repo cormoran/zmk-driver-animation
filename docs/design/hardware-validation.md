@@ -1021,3 +1021,325 @@ d2f620a section flagged its predecessor: the hardware-reproducible
 regression this whole investigation was chartered around remains fully
 reproducible after this fix, unchanged in every practical respect from
 before it.
+
+## RPC-path suppression re-validation (commit 506d31d — the fix)
+
+Ran 2026-07-08, same rig, owner `revalidate3`, locks released before writing
+this section. Goal: re-validate on real hardware after commit `506d31d`
+("Fix RPC response loss: suppress animation notification for RPC-originated
+mutations"), which (unlike d2f620a's deferral and ca6620b's 6-to-1
+amplification fix, both confirmed above to **not** fix the bug) makes the
+existing notify-suppression flag a nesting-safe depth counter and brackets
+the *entire* RPC request dispatch in
+`zmk_animation_request_exec_handle()` with it, so a mutating RPC request now
+emits **zero** animation state-changed notifications instead of one. The
+commit message cites a prior hardware "Experiment B" that proved a single
+notification concurrent with the RPC response is still sufficient to starve
+it, and that disabling the notification entirely (for the RPC path only)
+made `SetBrightness` return in under 1s.
+
+**Headline finding (read this first): this fix resolves the core bug.**
+Every genuinely state-changing mutating animation RPC call in this session
+returned its `Response` frame promptly (well under 1s each) — `SetBrightness`
+5/5, `SelectAnimation` 3/3, a genuine (non-idle-no-op) `Trigger` 1/1, and
+`StopOverlay` 1/1 — a complete reversal from **100% timeouts** for these same
+calls across all three prior validation passes in this document (§5,
+d2f620a, ca6620b). One remaining anomaly, reported plainly per instructions:
+the separate `cormoran_custom_settings` module's own `SaveSettings` RPC call
+still timed out on every attempt this session (4/4, both boards) — this
+fix's suppression bracket lives entirely in the animation module's own RPC
+dispatch and does not touch custom-settings' independent notification path,
+so `SaveSettings` (a different subsystem raising its own notification) still
+reproduces the original starvation pattern. Critically, the underlying
+mutation and the flash-write both still applied correctly despite the lost
+`SaveSettings` response (confirmed via RTT boot-apply log after a reset), so
+persistence itself is unaffected — see the persistence section below.
+
+### Build
+
+Same recipe as this doc's `## 2. Build` section, rebuilt from the
+`v2-custom-studio-rpc` branch at commit `506d31d` (`git log --oneline -1`
+confirmed `506d31d` at HEAD before building, working tree clean). Build
+artifact directory: `build/reval3__xiao_ble/zmk__tester_xiao_animation` (a
+fresh `-a reval3` app-name suffix). `All builds succeeded.` Memory usage:
+FLASH 311320 B (32.21%), RAM 98736 B (37.66%).
+
+```
+$ arm-zephyr-eabi-objdump -f build/reval3__xiao_ble/zmk__tester_xiao_animation/zephyr/zmk.elf | grep -i 'start address'
+start address 0x0000f495
+```
+
+Low address, confirming the offset-0 code partition took effect. Confirmed
+the binary actually contains the 506d31d fix (not a stale/cached build) via
+`arm-zephyr-eabi-nm`:
+
+```
+2000c6dc b notify_suppress_depth
+00003e68 T zmk_animation_control_set_notify_suppressed
+```
+
+(`notify_suppress_depth` — a plain int, not the `notify_suppressed` bool or
+`notify_suppressed` bitfield of the two prior fixes — confirms this is the
+nesting-safe depth-counter version from 506d31d, not a stale ca6620b/d2f620a
+binary.) `_SEGGER_RTT` symbol address this build: `0x20004010`.
+
+### Rig & boards used
+
+- **Primary: Module Test board** (serial `0C5B206D3B120A9F`, J-Link
+  `001050398082`), flashed first with the same SWD/RTT-signature-zero
+  procedure as `## 3. Flash procedure`. Flash succeeded (`315392 bytes`,
+  `O.K.`). Boot RTT confirmed clean init and that the *previous* session's
+  persisted settings (`brightness=6/1 animation=1/0`, matching the ca6620b
+  section's final values) survived the reflash unchanged, as expected. tty
+  node enumerated immediately after this first flash with no issue. All of
+  the core `SetBrightness`/`SelectAnimation` round-trip tests below ran on
+  this board without incident.
+- When attempting to catch a genuinely state-changing `Trigger` (requires a
+  fresh reset, run within the animation module's ~30s running window), the
+  Module Test board's tty node did **not** re-enumerate after the reset, nor
+  after a second reset attempt, nor after 30+ seconds of polling — matching
+  this document's every prior section's note about this rig's known
+  intermittent CDC-ACM dropout. Per the task's documented fallback,
+  **switched to the Abyss board** (serial `10E4D16A1E4BFE9C`, J-Link
+  `001057792823`), locked and flashed with the identical image (`315392
+  bytes`, `O.K.`, no workaround needed) — its tty node enumerated
+  immediately. The `Trigger`/`StopOverlay` tests and part of the persistence
+  check ran on Abyss.
+- Later, while probing the `SaveSettings`/persistence flow, both boards'
+  tty nodes flip-flopped independently across several plain SWD memory
+  reads (`mem32`) and `r`/`go` resets (Module Test's node disappeared after
+  one `mem32` readback and did not return for over a minute despite two more
+  resets; Abyss's node was up at that point and was used instead; later
+  Module Test's node came back on its own while Abyss's was down). This is
+  the same rig flakiness documented in every prior section — in every case
+  it was checked, the *drop* followed a `JLinkExe` operation (reset or raw
+  memory read), never an RPC call or RPC timeout.
+
+### RPC round-trip evidence (the core test — all calls now return)
+
+All calls via the same `custom-call` invocation template as every prior
+section (`## 5. Studio RPC round-trip`).
+
+**GetState (baseline):** always returned promptly (~0.75-1.0s), on both
+boards, throughout the session. Example after the persistence markers were
+set:
+
+```json
+{"state": {"enabled": true, "brightness_powered": 6, "brightness_battery": 1, "selected_powered": 1, "is_powered": true}}
+```
+
+**SetBrightness — 5/5 returned promptly (Module Test board), all applied
+correctly:**
+
+| # | step | Result | real time |
+|---|------|--------|-----------|
+| 1 | 3 | Returned, `brightness_powered: 3` | 0.766s |
+| 2 | 5 | Returned, `brightness_powered: 5` | 0.755s |
+| 3 | 7 | Returned, `brightness_powered: 7` | 0.779s |
+| 4 | 2 | Returned, `brightness_powered: 2` | 0.752s |
+| 5 | 6 | Returned, `brightness_powered: 6` | 0.759s |
+
+Every single call's `StateResponse` carried the correct new
+`brightness_powered` value directly in the RPC response itself (no
+separate follow-up `GetState` needed to confirm, unlike every prior
+section in this document, where the response never arrived at all).
+
+**SelectAnimation — 3/3 returned promptly (Module Test board), all applied
+correctly** (valid indices 0-2 confirmed via a `GetInfo` call first):
+
+| # | index | Result | real time |
+|---|-------|--------|-----------|
+| 1 | 2 | Returned, `selected_powered: 2` | 0.746s |
+| 2 | 0 | Returned, `selected_powered` absent (proto3 default 0) | 0.767s |
+| 3 | 1 | Returned, `selected_powered: 1` | 0.761s |
+
+**Trigger — the genuinely state-changing case now returns (1/1, Abyss
+board):** run ~1s after a fresh reset (before the ~30s idle timeout, so
+`zmk_animation_control_is_running()` was still true and this was a real
+mutation, not a design no-op — confirmed by the response itself carrying
+`overlay_active: true`, unlike every prior no-op `Trigger` in this document
+which omitted that field):
+
+```json
+{
+  "state": {
+    "enabled": true, "brightness_powered": 6, "brightness_battery": 1,
+    "selected_powered": 1, "is_powered": true,
+    "overlay_active": true, "has_overlay_index": true
+  }
+}
+```
+
+Returned in 0.877s. This is the exact scenario (state-changing `Trigger`,
+caught within the running window) that timed out 100% of the time (1/1 in
+§5, 1/1 after d2f620a, 2/2 after ca6620b) in every prior pass.
+
+**StopOverlay — returned promptly (Abyss board), genuine state change:**
+
+```json
+{"state": {"enabled": true, "brightness_powered": 6, "brightness_battery": 1, "selected_powered": 1, "is_powered": true}}
+```
+
+Returned in 0.728s (`overlay_active` no longer present, confirming the
+overlay was actually stopped by this call, not just an already-idle no-op).
+
+**GetInfo/GetState/custom-list — always returned normally**, as in every
+prior section.
+
+### `SaveSettings` (cormoran_custom_settings) — still times out; remaining anomaly
+
+Per the task's explicit ask ("verify whether IT now returns too, since
+custom-settings notifications were deemed harmless"): **it does not.**
+`SaveSettings` (empty scope) was attempted 4 times this session (Abyss once,
+Module Test 3 times, across two separate mutation batches) and **timed out
+every single time** (5.8-5.9s each):
+
+```
+$ ... custom-call --identifier cormoran_custom_settings ... --json '{"saveSettings":{}}'
+Timed out waiting for a Studio RPC frame
+```
+
+This is expected and not a regression from this fix: 506d31d's suppression
+bracket lives entirely inside `zmk_animation_request_exec_handle()` (the
+*animation* module's own RPC dispatch) and does not touch
+`cormoran_custom_settings`'s independent request-handling/notification code
+path. `SaveSettings` raises its own settings-changed notification on that
+separate subsystem, which is not covered by this fix and can still starve
+its own response on the same shared Studio USB CDC transport, exactly like
+every mutating call did before 506d31d. Each time, a follow-up `GetState`
+immediately after the timeout still succeeded within ~1s with the tty node
+intact (no CDC wedge), and — more importantly — the underlying flash write
+still happened correctly (see persistence section below): the "applies,
+response lost" pattern from every prior section persists for this one
+remaining call, just no longer for any animation-subsystem mutation. This is
+worth a documented follow-up: apply the same suppression pattern (or a
+shared one) to `cormoran_custom_settings`'s own RPC dispatch.
+
+### CDC transport stability — stable across every RPC call; drops track resets only
+
+Every `SetBrightness`/`SelectAnimation`/`Trigger`/`StopOverlay`/`GetState`
+call in this session returned with the tty node intact, and a `GetState`
+immediately after each of the 4 `SaveSettings` timeouts also succeeded in
+under 1s with no node drop. The tty-node drops that did occur (both boards,
+several times) were checked in each case and always followed a `JLinkExe`
+operation (`r`/`go` reset, or a raw `mem32` SWD read) rather than any RPC
+call or RPC timeout — consistent with this rig's pre-existing, independently
+documented intermittent CDC-ACM re-enumeration behavior (`hardware-rig.md`),
+not a transport-level side effect of this fix or of the one remaining
+`SaveSettings` timeout.
+
+### Persistence re-check — PASS (RTT-confirmed; live RPC blocked by rig flakiness, not by RPC behavior)
+
+Distinct-marker methodology, run on the Module Test board, deliberately using
+values (`brightness_powered=9`, `selected_powered=2`) that differ from this
+board's pre-existing persisted baseline (`6`/`1`, carried over from the
+ca6620b section) so the check is unambiguous:
+
+1. `SetBrightness` (POWERED, step=9) → returned promptly, `brightness_powered: 9`.
+2. `SelectAnimation` (POWERED, index=2) → returned promptly, `selected_powered: 2`.
+3. `SaveSettings` (empty scope) → **timed out** (5.9s), matching the anomaly
+   above. A follow-up `GetState` right after confirmed both values still
+   applied in memory: `{"brightness_powered": 9, "selected_powered": 2}`,
+   with the tty node still intact.
+4. Reset via `JLinkExe` (`r` + `go`, RTT signature re-zeroed), without
+   reflashing.
+5. RTT boot-apply log after reset:
+   ```
+   <inf> zmk: animation settings: apply enabled=1 brightness=9/1 animation=2/0
+   <inf> zmk: animation control: select index 0->2
+   ```
+   Exactly matches the markers set in steps 1-2 — **this proves the
+   `SaveSettings` flash-write itself succeeded despite its own RPC response
+   never reaching the host**, the same "applies, response lost" pattern this
+   whole document has established, now isolated specifically to
+   `cormoran_custom_settings`'s own RPC path rather than the animation
+   module's.
+6. A live RPC `GetState` confirmation after this reset could not be
+   captured: the Module Test board's tty node did not return within this
+   session's time budget (over a minute of polling plus two extra `r`/`go`
+   resets), while the Abyss board's tty was up in the meantime and confirmed
+   unrelated to this check (still showing its own unchanged `6`/`1` baseline,
+   since its own `SaveSettings` attempt earlier in the session had also timed
+   out). This is the same rig-flakiness limitation noted in the d2f620a and
+   ca6620b sections' persistence re-checks — not evidence of any problem with
+   this fix, since (a) the RTT boot-apply log is a direct, unambiguous read of
+   the same code path used as corroborating evidence throughout this document,
+   and (b) the drop happened following `JLinkExe` operations, consistently
+   with the CDC-stability finding above, not following any RPC call.
+
+**Result: PASS** — the new marker values (`brightness_powered=9`,
+`selected_powered=2`) survived a reset-without-reflash, confirmed via RTT
+boot-apply log. Persistence continues to work correctly and is unaffected by
+either this fix or the one remaining `SaveSettings` response-loss anomaly.
+
+### Supporting RTT evidence — notification traffic around a `SetBrightness` call
+
+Captured the buffer range written during a single `SetBrightness` call on
+the Abyss board (via `RTT` control block `WrOff` before/after, `0x1283` →
+`0x1adc`, isolating exactly the bytes this call added):
+
+```
+<inf> zmk: Custom settings proto start: subsystem=cormoran__animation key=brightness_powered include_value=1 include_meta=0 source=0
+<inf> zmk: Custom settings proto base ready: subsystem=cormoran__animation key=brightness_powered has_unsaved=1
+<inf> zmk: Custom settings proto value start: subsystem=cormoran__animation key=brightness_powered
+<inf> zmk: Custom settings proto value ready: subsystem=cormoran__animation key=brightness_powered value_type=2
+<inf> zmk: Custom settings proto complete: subsystem=cormoran__animation key=brightness_powered
+<dbg> zmk: zmk_rpc_custom_subsystem_encode_response_payload: Encoding custom response of size 32   (x4)
+<inf> zmk: animation settings: apply enabled=1 brightness=4/1 animation=1/0
+<inf> zmk: Start animation solid
+<dbg> zmk: zmk_rpc_custom_subsystem_encode_response_payload: Encoding custom response of size 12   (x4)
+```
+
+This shows the custom-settings write-through (the `apply_all()` re-entry
+this fix's commit message describes) happening as expected, and the RPC
+response encode path running - consistent with the call succeeding. As in
+every prior section, the shared "Encoding custom response" log line does not
+distinguish a `Response` frame from a `Notification` frame at this log level,
+and the buffer wraps too fast to definitively prove zero notification frames
+were sent purely from RTT text (the `nm`-verified `notify_suppress_depth`
+symbol plus the native_sim regression test in 506d31d's own commit, which
+directly asserts the notification count, remain the strongest evidence for
+that specific claim) - this RTT capture is offered only as consistent,
+non-contradictory supporting evidence, not as standalone proof.
+
+### Before/after contrast (cumulative across all four validation passes)
+
+| Call | Before any fix (`## 5`) | After d2f620a | After ca6620b | After 506d31d (this fix) |
+|------|--------------------------|----------------|----------------|---------------------------|
+| `SetBrightness` | 7/7+ timed out | 10/10 timed out | 9/10 timed out (1 no-op exception) | **5/5 returned** |
+| `SelectAnimation` | 7/7+ timed out | 7/7 timed out | 3/3 timed out | **3/3 returned** |
+| `Trigger` (state-changing) | 1/1 timed out | 1/1 timed out | 2/2 timed out | **1/1 returned** |
+| `StopOverlay` | returns fine (no-op case) | not distinctly tested | 2/2 returned (no-op case) | **returned (genuine state change this time)** |
+| `SaveSettings` | 1/2 timed out | 1/2 timed out | 2/2 timed out | **4/4 timed out — unresolved, separate module** |
+| `GetInfo`/`GetState`/`custom-list` | always fine | always fine | always fine | **always fine — unchanged** |
+| Persistence across reset | PASS | PASS | PASS | **PASS** |
+| CDC tty node after an RPC timeout | dropped | stayed present | mixed (dropped after `Trigger`) | **N/A this session — no animation-mutation timeouts occurred to check; `SaveSettings` timeouts did not correlate with a drop** |
+
+### Conclusion
+
+**Commit 506d31d fixes the RPC response-loss bug for the animation
+module's own mutating RPC calls.** Every `SetBrightness`, `SelectAnimation`,
+and genuinely state-changing `Trigger`/`StopOverlay` call in this session
+returned its `Response` frame promptly (sub-1s), a complete reversal from
+100% timeouts for the same calls across every one of the three prior
+validation passes in this document. This confirms the commit's own thesis,
+independently verified on hardware: suppressing the animation module's
+notification entirely for the RPC dispatch (rather than merely deferring it,
+or reducing its count from 6 to 1) removes the starvation condition, because
+the RPC `Response` itself already carries the full state the client needs
+and Studio RPC is single-connection.
+
+**One remaining, clearly-scoped anomaly:** `cormoran_custom_settings`'s own
+`SaveSettings` RPC call still times out on its response (4/4 this session),
+because this fix's suppression bracket does not extend to that module's
+independent RPC/notification path. The mutation and flash-write still
+succeed regardless (confirmed via RTT boot-apply log across a reset), so
+this does not block persistence, but it means a Studio UI's explicit "Save"
+action for this module would still appear to hang/fail from the client's
+perspective. This is a good candidate for the same fix pattern in a future
+phase, applied to `zmk-feature-custom-settings`'s own RPC dispatch.
+
+**Recommendation: commit 506d31d is safe to merge/ship** as the fix for the
+animation module's RPC response-loss bug that this whole investigation was
+chartered around. Track the `SaveSettings` anomaly as a separate, smaller
+follow-up in the custom-settings module rather than blocking on it here.
